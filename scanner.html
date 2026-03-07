@@ -121,8 +121,10 @@
   <span id="hud-text">Scanning...</span>
 </div>
 
-<script src="./three.min.js"></script>
-<script src="./mindar-three.prod.js"></script>
+<!-- Three.js via CDN -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.min.js"></script>
+<!-- MindAR Three.js integration via CDN -->
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-three.prod.js"></script>
 
 <script>
 const GITHUB_USER = "logithkannan";
@@ -146,6 +148,22 @@ function showError(msg) {
   document.getElementById("error-msg").textContent = msg;
 }
 
+// Resolve MindARThree from whatever the CDN bundle exposes
+function resolveMindARThree() {
+  // mindar-image-three.prod.js exposes a factory: window.getMindARThree()
+  if (typeof window.getMindARThree === "function") {
+    const result = window.getMindARThree();
+    if (typeof result === "function") return result;          // result IS the class
+    if (result?.MindARThree) return result.MindARThree;       // result has .MindARThree
+    if (result?.default) return result.default;               // result has .default
+  }
+  // Fallback: direct class or nested namespace
+  if (window.MindARThree) return window.MindARThree;
+  if (window.MINDAR?.IMAGE?.MindARThree) return window.MINDAR.IMAGE.MindARThree;
+  if (window.MINDAR?.MindARThree) return window.MINDAR.MindARThree;
+  return null;
+}
+
 document.getElementById("start-btn").addEventListener("click", async () => {
 
   // 1. Request camera permission
@@ -163,14 +181,15 @@ document.getElementById("start-btn").addEventListener("click", async () => {
 
   // 2. Check THREE is loaded
   if (!window.THREE) {
-    showError("THREE.js library not loaded. Please reload the page.");
+    showError("THREE.js failed to load from CDN. Check your internet connection and reload.");
     return;
   }
 
   // 3. Check MindARThree is loaded
-  const MindARThree = window.MindARThree || (window.MINDAR && window.MINDAR.IMAGE && window.MINDAR.IMAGE.MindARThree);
+  const MindARThree = resolveMindARThree();
   if (!MindARThree) {
-    showError("MindAR library not loaded. Please reload the page.");
+    const keys = Object.keys(window).filter(k => k.toLowerCase().includes("mindar") || k === "MINDAR");
+    showError(`MindAR library not loaded. Globals found: [${keys.join(", ") || "none"}]. Check internet connection and reload.`);
     return;
   }
 
