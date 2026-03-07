@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta charset="utf-8">
-  <title>AR Image Scanner - MindAR</title>
+  <title>Simple AR Scanner</title>
   <script src="https://cdn.jsdelivr.net/npm/aframe@1.5.0/dist/aframe-master.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
   <style>
@@ -11,224 +11,86 @@
       margin: 0;
       overflow: hidden;
     }
-    #loading-screen {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.9);
+    #example-scanning-overlay {
       display: flex;
-      flex-direction: column;
-      justify-content: center;
       align-items: center;
-      color: white;
-      font-family: Arial, sans-serif;
-      z-index: 1000;
+      justify-content: center;
+      position: fixed;
+      left: 0;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      background: transparent;
+      z-index: 2;
     }
-    #loading-screen.hidden {
+    @media (min-aspect-ratio: 1/1) {
+      #example-scanning-overlay .inner {
+        width: 50vh;
+        height: 50vh;
+      }
+    }
+    @media (max-aspect-ratio: 1/1) {
+      #example-scanning-overlay .inner {
+        width: 80vw;
+        height: 80vw;
+      }
+    }
+    #example-scanning-overlay .inner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      background: linear-gradient(to right, white 10px, transparent 10px) 0 0,
+        linear-gradient(to right, white 10px, transparent 10px) 0 100%,
+        linear-gradient(to left, white 10px, transparent 10px) 100% 0,
+        linear-gradient(to left, white 10px, transparent 10px) 100% 100%,
+        linear-gradient(to bottom, white 10px, transparent 10px) 0 0,
+        linear-gradient(to bottom, white 10px, transparent 10px) 100% 0,
+        linear-gradient(to top, white 10px, transparent 10px) 0 100%,
+        linear-gradient(to top, white 10px, transparent 10px) 100% 100%;
+      background-repeat: no-repeat;
+      background-size: 40px 40px;
+    }
+    #example-scanning-overlay.hidden {
       display: none;
     }
-    .spinner {
-      border: 4px solid #f3f3f3;
-      border-top: 4px solid #3498db;
-      border-radius: 50%;
-      width: 40px;
-      height: 40px;
-      animation: spin 1s linear infinite;
-      margin-bottom: 20px;
-    }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    #instructions {
-      position: fixed;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(0, 0, 0, 0.7);
-      color: white;
-      padding: 15px 25px;
-      border-radius: 10px;
-      font-family: Arial, sans-serif;
-      z-index: 100;
-      text-align: center;
-      max-width: 80%;
-    }
-    #status {
-      position: fixed;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(0, 0, 0, 0.7);
-      color: #4CAF50;
-      padding: 10px 20px;
-      border-radius: 5px;
-      font-family: Arial, sans-serif;
-      z-index: 100;
-      display: none;
-    }
-    #status.active {
-      display: block;
+    #example-scanning-overlay img {
+      opacity: 0.6;
+      width: 90%;
+      align-self: center;
     }
   </style>
 </head>
 <body>
-  <!-- Loading Screen -->
-  <div id="loading-screen">
-    <div class="spinner"></div>
-    <p>Initializing AR Scanner...</p>
-    <p style="font-size: 12px; opacity: 0.7;">Please allow camera access</p>
+  <div id="example-scanning-overlay" class="hidden">
+    <div class="inner">
+      <img src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/image-tracking/assets/card-example/card.png"/>
+    </div>
   </div>
 
-  <!-- Instructions -->
-  <div id="instructions">
-    📷 Point your camera at the trigger image to see AR content
-  </div>
-
-  <!-- Status Indicator -->
-  <div id="status">
-    ✓ Image Detected!
-  </div>
-
-  <!-- AR Scene -->
   <a-scene 
-    mindar-image="imageTargetSrc: https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.2/examples/image-tracking/assets/card-example/card.mind; autoStart: false; uiLoading: no; uiError: no; uiScanning: no;"
+    mindar-image="imageTargetSrc: https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/image-tracking/assets/card-example/card.mind; showStats: false;" 
     color-space="sRGB" 
     renderer="colorManagement: true, physicallyCorrectLights" 
     vr-mode-ui="enabled: false" 
     device-orientation-permission-ui="enabled: false"
   >
     <a-assets>
-      <a-asset-item id="avatarModel" src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.2/examples/image-tracking/assets/card-example/softmind/scene.gltf"></a-asset-item>
+      <a-asset-item id="avatarModel" src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/image-tracking/assets/card-example/softmind/scene.gltf"></a-asset-item>
     </a-assets>
 
     <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-    <!-- AR Target Entity -->
     <a-entity mindar-image-target="targetIndex: 0">
-      <!-- 3D Model -->
       <a-gltf-model 
         rotation="0 0 0" 
-        position="0 0 0" 
+        position="0 0 0.1" 
         scale="0.5 0.5 0.5" 
         src="#avatarModel"
-        animation="property: rotation; to: 0 360 0; loop: true; dur: 10000; easing: linear"
-      ></a-gltf-model>
-      
-      <!-- Text Label -->
-      <a-text 
-        value="AR Content Loaded!" 
-        color="#ffffff" 
-        align="center" 
-        width="2" 
-        position="0 -0.5 0"
-        animation="property: position; to: 0 -0.3 0; dir: alternate; loop: true; dur: 1000; easing: easeInOutSine"
-      ></a-text>
-
-      <!-- Animated Plane Background -->
-      <a-plane 
-        color="#4CAF50" 
-        opacity="0.5" 
-        width="1.5" 
-        height="1.5" 
-        position="0 0 -0.1"
-        animation="property: rotation; to: 0 0 360; loop: true; dur: 8000; easing: linear"
-      ></a-plane>
-
-      <!-- Particle Effect -->
-      <a-entity 
-        geometry="primitive: sphere; radius: 0.05"
-        material="color: #FFD700; emissive: #FFD700; emissiveIntensity: 0.5"
-        position="0.5 0.5 0"
-        animation="property: position; to: -0.5 1 0; loop: true; dur: 2000; dir: alternate; easing: easeInOutQuad"
-      ></a-entity>
-      <a-entity 
-        geometry="primitive: sphere; radius: 0.05"
-        material="color: #FF69B4; emissive: #FF69B4; emissiveIntensity: 0.5"
-        position="-0.5 0.5 0"
-        animation="property: position; to: 0.5 1 0; loop: true; dur: 2000; dir: alternate; easing: easeInOutQuad"
-      ></a-entity>
+        animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1000; loop: true"
+      >
+      </a-gltf-model>
     </a-entity>
   </a-scene>
-
-  <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      const sceneEl = document.querySelector('a-scene');
-      const loadingScreen = document.getElementById('loading-screen');
-      const statusEl = document.getElementById('status');
-      let arSystem = null;
-
-      // Wait for scene to fully load
-      sceneEl.addEventListener('loaded', () => {
-        console.log('Scene loaded, initializing AR...');
-        
-        // Wait a bit for systems to initialize
-        setTimeout(() => {
-          try {
-            arSystem = sceneEl.systems["mindar-image-system"];
-            
-            if (!arSystem) {
-              throw new Error('MindAR system not found');
-            }
-
-            // Start the AR system
-            arSystem.start().then(() => {
-              loadingScreen.classList.add('hidden');
-              console.log('AR Scanner started successfully!');
-            }).catch(err => {
-              console.error('Failed to start AR:', err);
-              loadingScreen.innerHTML = `
-                <p style="color: #ff6b6b;">⚠️ Camera Error</p>
-                <p style="font-size: 14px;">Please allow camera access and reload the page</p>
-                <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">Reload Page</button>
-              `;
-            });
-          } catch (err) {
-            console.error('Initialization error:', err);
-            loadingScreen.innerHTML = `
-              <p style="color: #ff6b6b;">⚠️ Failed to Initialize</p>
-              <p style="font-size: 14px;">Please reload the page</p>
-              <p style="font-size: 12px; opacity: 0.7; margin-top: 10px;">Error: ${err.message}</p>
-              <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">Reload Page</button>
-            `;
-          }
-        }, 1000);
-      });
-
-      // Track when target is found/lost
-      const target = document.querySelector('[mindar-image-target]');
-      
-      if (target) {
-        target.addEventListener('targetFound', event => {
-          console.log('Target found!');
-          statusEl.classList.add('active');
-          statusEl.style.color = '#4CAF50';
-          statusEl.textContent = '✓ Image Detected!';
-        });
-
-        target.addEventListener('targetLost', event => {
-          console.log('Target lost');
-          statusEl.style.color = '#ff6b6b';
-          statusEl.textContent = '✗ Searching for image...';
-          setTimeout(() => {
-            statusEl.classList.remove('active');
-          }, 1000);
-        });
-      }
-
-      // Handle visibility changes (tab switching)
-      document.addEventListener('visibilitychange', () => {
-        if (arSystem) {
-          if (document.hidden) {
-            arSystem.pause();
-          } else {
-            arSystem.unpause();
-          }
-        }
-      });
-    });
-  </script>
 </body>
 </html>
