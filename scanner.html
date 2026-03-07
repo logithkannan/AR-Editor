@@ -1,465 +1,234 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>Feel AR — Scanner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8">
+  <title>AR Image Scanner - MindAR</title>
+  <script src="https://cdn.jsdelivr.net/npm/aframe@1.5.0/dist/aframe-master.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
     body {
-      font-family: monospace;
-      background: #07070e;
-      color: #eeeef8;
-      height: 100vh;
+      margin: 0;
       overflow: hidden;
     }
-
-    /* ── Step 1: Welcome screen ── */
-    #welcome {
-      position: fixed; inset: 0;
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      background: #07070e;
-      gap: 14px; padding: 32px; text-align: center;
-      z-index: 300;
+    #loading-screen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.9);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: white;
+      font-family: Arial, sans-serif;
+      z-index: 1000;
     }
-    #welcome .logo { font-size: 26px; font-weight: 900; color: #63caff; }
-    #welcome h2 { font-size: 18px; font-weight: 700; margin-top: 4px; }
-    #welcome p { font-size: 13px; color: rgba(238,238,248,0.5); line-height: 1.7; max-width: 280px; }
-    #welcome .start-btn {
-      margin-top: 8px;
-      background: #63caff; color: #07070e;
-      border: none; border-radius: 14px;
-      padding: 16px 40px; font-size: 16px;
-      font-weight: 900; cursor: pointer;
-      font-family: monospace;
-      box-shadow: 0 4px 24px rgba(99,202,255,0.4);
-    }
-
-    /* ── Step 2: Loading screen ── */
-    #loading {
-      position: fixed; inset: 0;
-      display: none; flex-direction: column;
-      align-items: center; justify-content: center;
-      background: #07070e;
-      gap: 16px; padding: 24px; text-align: center;
-      z-index: 200;
-    }
-    #loading .logo { font-size: 22px; font-weight: 900; color: #63caff; }
-    .spinner {
-      width: 48px; height: 48px;
-      border: 3px solid rgba(99,202,255,0.15);
-      border-top-color: #63caff;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .status { font-size: 13px; color: rgba(238,238,248,0.5); max-width: 280px; line-height: 1.7; }
-    .progress-bar { width: 240px; height: 4px; background: rgba(99,202,255,0.1); border-radius: 2px; overflow: hidden; }
-    .progress-fill { height: 100%; background: #63caff; border-radius: 2px; transition: width 0.4s; width: 0%; }
-
-    /* ── Step 3: Error screen ── */
-    #error-screen {
-      position: fixed; inset: 0;
-      display: none; flex-direction: column;
-      align-items: center; justify-content: center;
-      background: #07070e;
-      gap: 14px; padding: 28px; text-align: center;
-      z-index: 200;
-    }
-    #error-screen .icon { font-size: 52px; }
-    #error-screen h2 { font-size: 18px; color: #f87171; }
-    #error-screen p { font-size: 12px; color: rgba(238,238,248,0.45); line-height: 1.8; max-width: 300px; }
-    #error-screen .retry {
-      background: #63caff; color: #07070e;
-      border: none; border-radius: 10px;
-      padding: 12px 28px; font-size: 14px;
-      font-weight: 900; cursor: pointer; font-family: monospace;
-    }
-
-    /* ── AR Scene ── */
-    #ar-container {
-      position: fixed; inset: 0;
-      z-index: 1;
-    }
-
-    /* ── Scan hint overlay ── */
-    #scan-hint {
-      position: fixed; top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      text-align: center; z-index: 10;
-      pointer-events: none;
+    #loading-screen.hidden {
       display: none;
     }
-    .scan-frame {
-      width: 230px; height: 230px;
-      border: 2px solid rgba(99,202,255,0.6);
-      border-radius: 22px; position: relative;
-      margin: 0 auto 14px;
-      animation: framePulse 2s ease-in-out infinite;
+    .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #3498db;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin-bottom: 20px;
     }
-    @keyframes framePulse {
-      0%, 100% { border-color: rgba(99,202,255,0.4); box-shadow: 0 0 0 rgba(99,202,255,0); }
-      50% { border-color: rgba(99,202,255,1); box-shadow: 0 0 20px rgba(99,202,255,0.3); }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
     }
-    .scan-frame::before, .scan-frame::after {
-      content: ''; position: absolute;
-      width: 28px; height: 28px;
-      border-color: #63caff; border-style: solid;
-    }
-    .scan-frame::before { top: -2px; left: -2px; border-width: 3px 0 0 3px; border-radius: 6px 0 0 0; }
-    .scan-frame::after  { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; border-radius: 0 0 6px 0; }
-    .scan-label {
-      font-size: 13px; color: rgba(255,255,255,0.8);
-      background: rgba(7,7,14,0.75);
-      backdrop-filter: blur(8px);
-      padding: 8px 18px; border-radius: 24px;
-      border: 1px solid rgba(255,255,255,0.08);
-    }
-
-    /* ── Bottom HUD ── */
-    #hud {
-      position: fixed; bottom: 24px; left: 50%;
+    #instructions {
+      position: fixed;
+      top: 20px;
+      left: 50%;
       transform: translateX(-50%);
-      background: rgba(7,7,14,0.85);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 40px;
-      padding: 10px 22px;
-      display: none; align-items: center; gap: 10px;
-      font-size: 12px; color: rgba(238,238,248,0.6);
-      z-index: 20; white-space: nowrap;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 15px 25px;
+      border-radius: 10px;
+      font-family: Arial, sans-serif;
+      z-index: 100;
+      text-align: center;
+      max-width: 80%;
     }
-    .hud-dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      background: #4ade80;
-      box-shadow: 0 0 10px #4ade80;
-      animation: pulse 2s ease-in-out infinite;
-      flex-shrink: 0;
+    #status {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.7);
+      color: #4CAF50;
+      padding: 10px 20px;
+      border-radius: 5px;
+      font-family: Arial, sans-serif;
+      z-index: 100;
+      display: none;
     }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    #status.active {
+      display: block;
+    }
   </style>
 </head>
 <body>
-
-<!-- SCREEN 1: Welcome + Camera Permission -->
-<div id="welcome">
-  <div class="logo">◈ Feel AR</div>
-  <h2>AR Scanner</h2>
-  <p>Point your camera at the trigger image to see the AR video appear on top of it.</p>
-  <button class="start-btn" id="start-btn">📷 Start Scanning</button>
-</div>
-
-<!-- SCREEN 2: Loading -->
-<div id="loading">
-  <div class="logo">◈ Feel AR</div>
-  <div class="spinner"></div>
-  <div class="progress-bar">
-    <div class="progress-fill" id="progress-fill"></div>
+  <!-- Loading Screen -->
+  <div id="loading-screen">
+    <div class="spinner"></div>
+    <p>Initializing AR Scanner...</p>
+    <p style="font-size: 12px; opacity: 0.7;">Please allow camera access</p>
   </div>
-  <div class="status" id="status-text">Loading...</div>
-</div>
 
-<!-- SCREEN 3: Error -->
-<div id="error-screen">
-  <div class="icon">⚠️</div>
-  <h2>Something went wrong</h2>
-  <p id="error-msg">Unknown error</p>
-  <button class="retry" onclick="location.reload()">Try Again</button>
-</div>
+  <!-- Instructions -->
+  <div id="instructions">
+    📷 Point your camera at the trigger image to see AR content
+  </div>
 
-<!-- AR CANVAS -->
-<div id="ar-container"></div>
+  <!-- Status Indicator -->
+  <div id="status">
+    ✓ Image Detected!
+  </div>
 
-<!-- Scan hint (shown when camera is open, target not found) -->
-<div id="scan-hint">
-  <div class="scan-frame"></div>
-  <div class="scan-label">Point at trigger image</div>
-</div>
+  <!-- AR Scene -->
+  <a-scene 
+    mindar-image="imageTargetSrc: https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.2/examples/image-tracking/assets/card-example/card.mind; autoStart: false; uiLoading: no; uiError: no; uiScanning: no;"
+    color-space="sRGB" 
+    renderer="colorManagement: true, physicallyCorrectLights" 
+    vr-mode-ui="enabled: false" 
+    device-orientation-permission-ui="enabled: false"
+  >
+    <a-assets>
+      <a-asset-item id="avatarModel" src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.2/examples/image-tracking/assets/card-example/softmind/scene.gltf"></a-asset-item>
+    </a-assets>
 
-<!-- Bottom HUD (shown when AR is running) -->
-<div id="hud">
-  <div class="hud-dot"></div>
-  <span id="hud-text">Scanning...</span>
-</div>
+    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-<!--
-  IMPORTANT: Scripts loaded from the SAME server (not CDN)
-  This ensures they load reliably on mobile.
-  Files must exist at: /three.min.js and /mindar-three.prod.js
--->
-<script src="/three.min.js"></script>
-<script src="/mindar-three.prod.js"></script>
+    <!-- AR Target Entity -->
+    <a-entity mindar-image-target="targetIndex: 0">
+      <!-- 3D Model -->
+      <a-gltf-model 
+        rotation="0 0 0" 
+        position="0 0 0" 
+        scale="0.5 0.5 0.5" 
+        src="#avatarModel"
+        animation="property: rotation; to: 0 360 0; loop: true; dur: 10000; easing: linear"
+      ></a-gltf-model>
+      
+      <!-- Text Label -->
+      <a-text 
+        value="AR Content Loaded!" 
+        color="#ffffff" 
+        align="center" 
+        width="2" 
+        position="0 -0.5 0"
+        animation="property: position; to: 0 -0.3 0; dir: alternate; loop: true; dur: 1000; easing: easeInOutSine"
+      ></a-text>
 
-<script>
-  // ── Config ──────────────────────────────────────────────────────────────────
-  const GITHUB_USER = "logithkannan";
-  const GITHUB_REPO = "feel-ar-data";
-  const rawUrl = (path) =>
-    `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/${path}?nocache=${Date.now()}`;
+      <!-- Animated Plane Background -->
+      <a-plane 
+        color="#4CAF50" 
+        opacity="0.5" 
+        width="1.5" 
+        height="1.5" 
+        position="0 0 -0.1"
+        animation="property: rotation; to: 0 0 360; loop: true; dur: 8000; easing: linear"
+      ></a-plane>
 
-  const projectId = new URLSearchParams(window.location.search).get("project");
+      <!-- Particle Effect -->
+      <a-entity 
+        geometry="primitive: sphere; radius: 0.05"
+        material="color: #FFD700; emissive: #FFD700; emissiveIntensity: 0.5"
+        position="0.5 0.5 0"
+        animation="property: position; to: -0.5 1 0; loop: true; dur: 2000; dir: alternate; easing: easeInOutQuad"
+      ></a-entity>
+      <a-entity 
+        geometry="primitive: sphere; radius: 0.05"
+        material="color: #FF69B4; emissive: #FF69B4; emissiveIntensity: 0.5"
+        position="-0.5 0.5 0"
+        animation="property: position; to: 0.5 1 0; loop: true; dur: 2000; dir: alternate; easing: easeInOutQuad"
+      ></a-entity>
+    </a-entity>
+  </a-scene>
 
-  // ── UI helpers ───────────────────────────────────────────────────────────────
-  function showScreen(id) {
-    ["welcome","loading","error-screen"].forEach(s => {
-      document.getElementById(s).style.display = s === id ? "flex" : "none";
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const sceneEl = document.querySelector('a-scene');
+      const loadingScreen = document.getElementById('loading-screen');
+      const statusEl = document.getElementById('status');
+      let arSystem = null;
+
+      // Wait for scene to fully load
+      sceneEl.addEventListener('loaded', () => {
+        console.log('Scene loaded, initializing AR...');
+        
+        // Wait a bit for systems to initialize
+        setTimeout(() => {
+          try {
+            arSystem = sceneEl.systems["mindar-image-system"];
+            
+            if (!arSystem) {
+              throw new Error('MindAR system not found');
+            }
+
+            // Start the AR system
+            arSystem.start().then(() => {
+              loadingScreen.classList.add('hidden');
+              console.log('AR Scanner started successfully!');
+            }).catch(err => {
+              console.error('Failed to start AR:', err);
+              loadingScreen.innerHTML = `
+                <p style="color: #ff6b6b;">⚠️ Camera Error</p>
+                <p style="font-size: 14px;">Please allow camera access and reload the page</p>
+                <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">Reload Page</button>
+              `;
+            });
+          } catch (err) {
+            console.error('Initialization error:', err);
+            loadingScreen.innerHTML = `
+              <p style="color: #ff6b6b;">⚠️ Failed to Initialize</p>
+              <p style="font-size: 14px;">Please reload the page</p>
+              <p style="font-size: 12px; opacity: 0.7; margin-top: 10px;">Error: ${err.message}</p>
+              <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">Reload Page</button>
+            `;
+          }
+        }, 1000);
+      });
+
+      // Track when target is found/lost
+      const target = document.querySelector('[mindar-image-target]');
+      
+      if (target) {
+        target.addEventListener('targetFound', event => {
+          console.log('Target found!');
+          statusEl.classList.add('active');
+          statusEl.style.color = '#4CAF50';
+          statusEl.textContent = '✓ Image Detected!';
+        });
+
+        target.addEventListener('targetLost', event => {
+          console.log('Target lost');
+          statusEl.style.color = '#ff6b6b';
+          statusEl.textContent = '✗ Searching for image...';
+          setTimeout(() => {
+            statusEl.classList.remove('active');
+          }, 1000);
+        });
+      }
+
+      // Handle visibility changes (tab switching)
+      document.addEventListener('visibilitychange', () => {
+        if (arSystem) {
+          if (document.hidden) {
+            arSystem.pause();
+          } else {
+            arSystem.unpause();
+          }
+        }
+      });
     });
-  }
-
-  function setProgress(msg, pct) {
-    document.getElementById("status-text").textContent = msg;
-    document.getElementById("progress-fill").style.width = (pct || 0) + "%";
-  }
-
-  function showError(msg) {
-    showScreen("error-screen");
-    document.getElementById("error-msg").textContent = msg;
-  }
-
-  // ── Start button ─────────────────────────────────────────────────────────────
-  document.getElementById("start-btn").addEventListener("click", async () => {
-
-    // Step 1: Request camera permission explicitly
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" } }
-      });
-      // Permission granted — stop test stream, MindAR opens its own
-      stream.getTracks().forEach(t => t.stop());
-    } catch (err) {
-      if (err.name === "NotAllowedError") {
-        showError("Camera permission was denied. Please allow camera access in your browser settings and reload.");
-      } else {
-        showError("Camera error: " + err.message);
-      }
-      return;
-    }
-
-    // Step 2: Check libraries loaded
-    if (!window.MINDAR || !window.THREE) {
-      showError("AR libraries not loaded. Make sure you deployed the project with three.min.js and mindar-three.prod.js in the public folder.");
-      return;
-    }
-
-    // Step 3: Show loading and start
-    showScreen("loading");
-    setProgress("Fetching project data...", 5);
-    await loadAndStartAR();
-  });
-
-  // ── Main AR flow ─────────────────────────────────────────────────────────────
-  async function loadAndStartAR() {
-
-    // 1. Load project JSON from GitHub
-    if (!projectId) {
-      showError("No project ID in URL. Open this link from the editor.");
-      return;
-    }
-
-    let project;
-    try {
-      setProgress("Loading project from GitHub...", 10);
-      const res = await fetch(rawUrl(`projects/${projectId}.json`));
-      if (!res.ok) throw new Error(`Project not found (${res.status}). Make sure you saved it in the editor.`);
-      project = await res.json();
-    } catch (e) {
-      showError(e.message);
-      return;
-    }
-
-    // 2. Validate project
-    if (!project.triggerUrl) {
-      showError("No trigger image found. Please upload a trigger image in the editor and save.");
-      return;
-    }
-    if (!project.layers || project.layers.length === 0) {
-      showError("No layers found. Please add a video or image layer in the editor and save.");
-      return;
-    }
-
-    // 3. Download trigger image
-    let triggerImg;
-    try {
-      setProgress("Downloading trigger image...", 18);
-      const imgRes = await fetch(project.triggerUrl);
-      if (!imgRes.ok) throw new Error("Failed to download trigger image.");
-      const blob = await imgRes.blob();
-      const url = URL.createObjectURL(blob);
-      triggerImg = await new Promise((resolve, reject) => {
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => resolve(img);
-        img.onerror = () => reject(new Error("Trigger image could not be decoded."));
-        img.src = url;
-      });
-    } catch (e) {
-      showError(e.message);
-      return;
-    }
-
-    // 4. Compile AR target from trigger image
-    let targetSrc;
-    try {
-      setProgress("Analysing trigger image...", 25);
-      const compiler = new MINDAR.IMAGE.Compiler();
-      await compiler.compileImageTargets([triggerImg], (progress) => {
-        const pct = Math.round(25 + progress * 55);
-        setProgress(`Compiling AR target: ${Math.round(progress * 100)}%`, pct);
-      });
-      const buffer = await compiler.exportData();
-      targetSrc = URL.createObjectURL(new Blob([buffer]));
-    } catch (e) {
-      showError("Failed to compile AR target: " + e.message);
-      return;
-    }
-
-    // 5. Build AR scene and start camera
-    setProgress("Starting camera...", 85);
-    await buildARScene(targetSrc, project);
-  }
-
-  // ── Build AR scene ────────────────────────────────────────────────────────────
-  async function buildARScene(targetSrc, project) {
-    try {
-      const { MindARThree } = MINDAR.IMAGE;
-
-      const mindarThree = new MindARThree({
-        container: document.getElementById("ar-container"),
-        imageTargetSrc: targetSrc,
-        maxTrack: 1,
-        filterMinCF: 0.001,
-        filterBeta: 1000,
-      });
-
-      const { renderer, scene, camera } = mindarThree;
-      const anchor = mindarThree.addAnchor(0);
-      const videoElements = [];
-
-      // Canvas size used in editor
-      const CANVAS_W = 500;
-      const CANVAS_H = 360;
-
-      // Add each layer as a 3D plane
-      for (const layer of project.layers) {
-        let mesh = null;
-
-        const lw = layer.width || 200;
-        const lh = layer.height || 150;
-
-        // Convert canvas pixel position → normalized 3D position
-        const posX = ((layer.x + lw / 2) - CANVAS_W / 2) / CANVAS_W;
-        const posY = -((layer.y + lh / 2) - CANVAS_H / 2) / CANVAS_H;
-        const scaleW = lw / CANVAS_W;
-        const scaleH = lh / CANVAS_H;
-
-        setProgress("Loading layer: " + layer.name, 90);
-
-        if (layer.type === "video") {
-          // Create video element
-          const video = document.createElement("video");
-          video.src = layer.url;
-          video.loop = true;
-          video.muted = true;
-          video.playsInline = true;
-          video.setAttribute("playsinline", "");
-          video.setAttribute("webkit-playsinline", "");
-          video.crossOrigin = "anonymous";
-          video.preload = "auto";
-          videoElements.push(video);
-
-          const texture = new THREE.VideoTexture(video);
-          texture.minFilter = THREE.LinearFilter;
-          texture.magFilter = THREE.LinearFilter;
-
-          mesh = new THREE.Mesh(
-            new THREE.PlaneGeometry(scaleW, scaleH),
-            new THREE.MeshBasicMaterial({
-              map: texture,
-              transparent: true,
-              opacity: layer.opacity ?? 1,
-              side: THREE.DoubleSide,
-            })
-          );
-
-        } else if (layer.type === "image") {
-          const texture = await new THREE.TextureLoader().loadAsync(layer.url);
-          mesh = new THREE.Mesh(
-            new THREE.PlaneGeometry(scaleW, scaleH),
-            new THREE.MeshBasicMaterial({
-              map: texture,
-              transparent: true,
-              opacity: layer.opacity ?? 1,
-              side: THREE.DoubleSide,
-            })
-          );
-
-        } else if (layer.type === "text") {
-          const canvas = document.createElement("canvas");
-          canvas.width = 512; canvas.height = 200;
-          const ctx = canvas.getContext("2d");
-          ctx.fillStyle = "rgba(0,0,0,0.65)";
-          ctx.fillRect(0, 0, 512, 200);
-          ctx.fillStyle = "#ffffff";
-          ctx.font = "bold 52px sans-serif";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillText(layer.content || "", 256, 100);
-          const texture = new THREE.CanvasTexture(canvas);
-          mesh = new THREE.Mesh(
-            new THREE.PlaneGeometry(scaleW, scaleH),
-            new THREE.MeshBasicMaterial({
-              map: texture,
-              transparent: true,
-              opacity: layer.opacity ?? 1,
-              side: THREE.DoubleSide,
-            })
-          );
-        }
-
-        if (mesh) {
-          mesh.position.set(posX, posY, 0.01);
-          mesh.rotation.z = -((layer.rotation || 0) * Math.PI) / 180;
-          anchor.group.add(mesh);
-        }
-      }
-
-      // ── Target found: show video, hide hint ────────────────────────────────
-      anchor.onTargetFound = () => {
-        document.getElementById("scan-hint").style.display = "none";
-        document.getElementById("hud-text").textContent = "✓ AR Active — " + project.name;
-        document.getElementById("hud-dot").style.background = "#4ade80";
-        videoElements.forEach(v => v.play().catch(() => {}));
-      };
-
-      // ── Target lost: hide video, show hint ────────────────────────────────
-      anchor.onTargetLost = () => {
-        document.getElementById("scan-hint").style.display = "block";
-        document.getElementById("hud-text").textContent = "Scanning for image...";
-        document.getElementById("hud-dot").style.background = "#facc15";
-        videoElements.forEach(v => v.pause());
-      };
-
-      // ── Start MindAR (opens camera) ───────────────────────────────────────
-      setProgress("Opening camera...", 97);
-      await mindarThree.start();
-
-      // Hide loading, show AR UI
-      showScreen(null);
-      document.getElementById("loading").style.display = "none";
-      document.getElementById("scan-hint").style.display = "block";
-      document.getElementById("hud").style.display = "flex";
-
-      // Render loop
-      renderer.setAnimationLoop(() => {
-        renderer.render(scene, camera);
-      });
-
-    } catch (e) {
-      showError("AR scene failed: " + e.message + ". Please reload and try again.");
-    }
-  }
-</script>
+  </script>
 </body>
 </html>
