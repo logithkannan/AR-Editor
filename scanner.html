@@ -1,96 +1,313 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta charset="utf-8">
-  <title>Simple AR Scanner</title>
-  <script src="https://cdn.jsdelivr.net/npm/aframe@1.5.0/dist/aframe-master.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Feel AR — Scanner</title>
   <style>
-    body {
-      margin: 0;
-      overflow: hidden;
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: monospace; background: #07070e; color: #eeeef8; height: 100vh; overflow: hidden; }
+    #welcome {
+      position: fixed; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: #07070e; gap: 14px; padding: 32px; text-align: center; z-index: 300;
     }
-    #example-scanning-overlay {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      position: fixed;
-      left: 0;
-      right: 0;
-      top: 0;
-      bottom: 0;
-      background: transparent;
-      z-index: 2;
+    #welcome .logo { font-size: 26px; font-weight: 900; color: #63caff; }
+    #welcome h2 { font-size: 18px; font-weight: 700; margin-top: 4px; }
+    #welcome p { font-size: 13px; color: rgba(238,238,248,0.5); line-height: 1.7; max-width: 280px; }
+    #welcome .start-btn {
+      margin-top: 8px; background: #63caff; color: #07070e;
+      border: none; border-radius: 14px; padding: 16px 40px;
+      font-size: 16px; font-weight: 900; cursor: pointer; font-family: monospace;
+      box-shadow: 0 4px 24px rgba(99,202,255,0.4);
     }
-    @media (min-aspect-ratio: 1/1) {
-      #example-scanning-overlay .inner {
-        width: 50vh;
-        height: 50vh;
-      }
+    #loading {
+      position: fixed; inset: 0; display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: #07070e; gap: 16px; padding: 24px; text-align: center; z-index: 200;
     }
-    @media (max-aspect-ratio: 1/1) {
-      #example-scanning-overlay .inner {
-        width: 80vw;
-        height: 80vw;
-      }
+    #loading .logo { font-size: 22px; font-weight: 900; color: #63caff; }
+    .spinner {
+      width: 48px; height: 48px;
+      border: 3px solid rgba(99,202,255,0.15); border-top-color: #63caff;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
     }
-    #example-scanning-overlay .inner {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      position: relative;
-      background: linear-gradient(to right, white 10px, transparent 10px) 0 0,
-        linear-gradient(to right, white 10px, transparent 10px) 0 100%,
-        linear-gradient(to left, white 10px, transparent 10px) 100% 0,
-        linear-gradient(to left, white 10px, transparent 10px) 100% 100%,
-        linear-gradient(to bottom, white 10px, transparent 10px) 0 0,
-        linear-gradient(to bottom, white 10px, transparent 10px) 100% 0,
-        linear-gradient(to top, white 10px, transparent 10px) 0 100%,
-        linear-gradient(to top, white 10px, transparent 10px) 100% 100%;
-      background-repeat: no-repeat;
-      background-size: 40px 40px;
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .status { font-size: 13px; color: rgba(238,238,248,0.5); max-width: 280px; line-height: 1.7; }
+    .progress-bar { width: 240px; height: 4px; background: rgba(99,202,255,0.1); border-radius: 2px; overflow: hidden; }
+    .progress-fill { height: 100%; background: #63caff; border-radius: 2px; transition: width 0.4s; width: 0%; }
+    #error-screen {
+      position: fixed; inset: 0; display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: #07070e; gap: 14px; padding: 28px; text-align: center; z-index: 200;
     }
-    #example-scanning-overlay.hidden {
-      display: none;
+    #error-screen h2 { font-size: 18px; color: #f87171; }
+    #error-screen p { font-size: 12px; color: rgba(238,238,248,0.45); line-height: 1.8; max-width: 300px; }
+    #error-screen .retry {
+      background: #63caff; color: #07070e; border: none; border-radius: 10px;
+      padding: 12px 28px; font-size: 14px; font-weight: 900; cursor: pointer; font-family: monospace;
     }
-    #example-scanning-overlay img {
-      opacity: 0.6;
-      width: 90%;
-      align-self: center;
+    #ar-container { position: fixed; inset: 0; z-index: 1; }
+    #scan-hint {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      text-align: center; z-index: 10; pointer-events: none; display: none;
     }
+    .scan-frame {
+      width: 230px; height: 230px; border: 2px solid rgba(99,202,255,0.6);
+      border-radius: 22px; position: relative; margin: 0 auto 14px;
+      animation: framePulse 2s ease-in-out infinite;
+    }
+    @keyframes framePulse {
+      0%,100% { border-color: rgba(99,202,255,0.4); }
+      50% { border-color: rgba(99,202,255,1); box-shadow: 0 0 20px rgba(99,202,255,0.3); }
+    }
+    .scan-frame::before, .scan-frame::after {
+      content: ''; position: absolute; width: 28px; height: 28px;
+      border-color: #63caff; border-style: solid;
+    }
+    .scan-frame::before { top: -2px; left: -2px; border-width: 3px 0 0 3px; border-radius: 6px 0 0 0; }
+    .scan-frame::after  { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; border-radius: 0 0 6px 0; }
+    .scan-label {
+      font-size: 13px; color: rgba(255,255,255,0.8);
+      background: rgba(7,7,14,0.75); backdrop-filter: blur(8px);
+      padding: 8px 18px; border-radius: 24px; border: 1px solid rgba(255,255,255,0.08);
+    }
+    #hud {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: rgba(7,7,14,0.85); backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.08); border-radius: 40px;
+      padding: 10px 22px; display: none; align-items: center; gap: 10px;
+      font-size: 12px; color: rgba(238,238,248,0.6); z-index: 20; white-space: nowrap;
+    }
+    .hud-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: #4ade80;
+      box-shadow: 0 0 10px #4ade80; animation: pulse 2s ease-in-out infinite; flex-shrink: 0;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
   </style>
 </head>
 <body>
-  <div id="example-scanning-overlay" class="hidden">
-    <div class="inner">
-      <img src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/image-tracking/assets/card-example/card.png"/>
-    </div>
-  </div>
 
-  <a-scene 
-    mindar-image="imageTargetSrc: https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/image-tracking/assets/card-example/card.mind; showStats: false;" 
-    color-space="sRGB" 
-    renderer="colorManagement: true, physicallyCorrectLights" 
-    vr-mode-ui="enabled: false" 
-    device-orientation-permission-ui="enabled: false"
-  >
-    <a-assets>
-      <a-asset-item id="avatarModel" src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/image-tracking/assets/card-example/softmind/scene.gltf"></a-asset-item>
-    </a-assets>
+<div id="welcome">
+  <div class="logo">◈ Feel AR</div>
+  <h2>AR Scanner</h2>
+  <p>Point your camera at the trigger image to see the AR overlay appear on top of it.</p>
+  <button class="start-btn" id="start-btn">📷 Start Scanning</button>
+</div>
 
-    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+<div id="loading">
+  <div class="logo">◈ Feel AR</div>
+  <div class="spinner"></div>
+  <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+  <div class="status" id="status-text">Loading...</div>
+</div>
 
-    <a-entity mindar-image-target="targetIndex: 0">
-      <a-gltf-model 
-        rotation="0 0 0" 
-        position="0 0 0.1" 
-        scale="0.5 0.5 0.5" 
-        src="#avatarModel"
-        animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1000; loop: true"
-      >
-      </a-gltf-model>
-    </a-entity>
-  </a-scene>
+<div id="error-screen">
+  <div style="font-size:52px">⚠️</div>
+  <h2>Something went wrong</h2>
+  <p id="error-msg">Unknown error</p>
+  <button class="retry" onclick="location.reload()">Try Again</button>
+</div>
+
+<div id="ar-container"></div>
+
+<div id="scan-hint">
+  <div class="scan-frame"></div>
+  <div class="scan-label">Point at trigger image</div>
+</div>
+
+<div id="hud">
+  <div class="hud-dot" id="hud-dot"></div>
+  <span id="hud-text">Scanning...</span>
+</div>
+
+<script src="./three.min.js"></script>
+<script src="./mindar-three.prod.js"></script>
+
+<script>
+const GITHUB_USER = "logithkannan";
+const GITHUB_REPO = "feel-ar-data";
+const rawUrl = (path) => `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/${path}?t=${Date.now()}`;
+const projectId = new URLSearchParams(window.location.search).get("project");
+
+function showScreen(id) {
+  ["welcome","loading","error-screen"].forEach(s => {
+    document.getElementById(s).style.display = (s === id) ? "flex" : "none";
+  });
+}
+
+function setProgress(msg, pct) {
+  document.getElementById("status-text").textContent = msg;
+  document.getElementById("progress-fill").style.width = (pct || 0) + "%";
+}
+
+function showError(msg) {
+  showScreen("error-screen");
+  document.getElementById("error-msg").textContent = msg;
+}
+
+document.getElementById("start-btn").addEventListener("click", async () => {
+
+  // 1. Request camera permission
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
+    stream.getTracks().forEach(t => t.stop());
+  } catch (err) {
+    if (err.name === "NotAllowedError") {
+      showError("Camera permission denied. Please allow camera access and reload.");
+    } else {
+      showError("Camera error: " + err.message);
+    }
+    return;
+  }
+
+  // 2. Check THREE is loaded
+  if (!window.THREE) {
+    showError("THREE.js library not loaded. Please reload the page.");
+    return;
+  }
+
+  // 3. Check MindARThree is loaded
+  const MindARThree = window.MindARThree || (window.MINDAR && window.MINDAR.IMAGE && window.MINDAR.IMAGE.MindARThree);
+  if (!MindARThree) {
+    showError("MindAR library not loaded. Please reload the page.");
+    return;
+  }
+
+  showScreen("loading");
+  setProgress("Fetching project data...", 5);
+  await loadAndStartAR(MindARThree);
+});
+
+async function loadAndStartAR(MindARThree) {
+  if (!projectId) { showError("No project ID in URL. Use the editor to get your scanner link."); return; }
+
+  // Load project JSON from GitHub
+  let project;
+  try {
+    setProgress("Loading project from GitHub...", 15);
+    const res = await fetch(rawUrl(`projects/${projectId}.json`));
+    if (!res.ok) throw new Error(`Project not found (${res.status}). Save it in the editor first.`);
+    project = await res.json();
+  } catch (e) { showError(e.message); return; }
+
+  if (!project.layers?.length) { showError("No layers added yet. Add content in the editor."); return; }
+
+  // Determine the AR target source:
+  // Option A: pre-compiled .mind file uploaded in editor (fast, ~2s)
+  // Option B: raw trigger image URL for fallback
+  let targetSrc;
+
+  if (project.mindFileUrl) {
+    // Use pre-compiled .mind file directly — no compilation needed!
+    setProgress("Loading compiled AR target...", 40);
+    targetSrc = project.mindFileUrl;
+    setProgress("AR target ready ✓", 75);
+  } else if (project.triggerUrl) {
+    // No .mind file — inform user to upload one in editor
+    showError("No compiled .mind file found. Upload a targets.mind file in the editor for this project.");
+    return;
+  } else {
+    showError("No trigger image or .mind file. Set them up in the editor.");
+    return;
+  }
+
+  setProgress("Starting camera...", 85);
+  await buildARScene(targetSrc, project, MindARThree);
+}
+
+async function buildARScene(targetSrc, project, MindARThree) {
+  try {
+    const mindarThree = new MindARThree({
+      container: document.getElementById("ar-container"),
+      imageTargetSrc: targetSrc,
+      maxTrack: 1,
+      filterMinCF: 0.001,
+      filterBeta: 1000,
+    });
+
+    const { renderer, scene, camera } = mindarThree;
+    const anchor = mindarThree.addAnchor(0);
+    const videoElements = [];
+    const W = 500, H = 360;
+
+    for (const layer of project.layers) {
+      const lw = layer.width || 200;
+      const lh = layer.height || 150;
+      const posX = ((layer.x + lw / 2) - W / 2) / W;
+      const posY = -((layer.y + lh / 2) - H / 2) / H;
+      const scaleW = lw / W;
+      const scaleH = lh / H;
+      let mesh = null;
+
+      setProgress("Loading layer: " + (layer.name || layer.type), 90);
+
+      if (layer.type === "video") {
+        const video = document.createElement("video");
+        video.src = layer.url; video.loop = true; video.muted = true;
+        video.playsInline = true;
+        video.setAttribute("playsinline", "");
+        video.setAttribute("webkit-playsinline", "");
+        video.crossOrigin = "anonymous";
+        videoElements.push(video);
+        const texture = new THREE.VideoTexture(video);
+        texture.minFilter = THREE.LinearFilter;
+        mesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(scaleW, scaleH),
+          new THREE.MeshBasicMaterial({ map: texture, transparent: true, opacity: layer.opacity ?? 1, side: THREE.DoubleSide })
+        );
+      } else if (layer.type === "image") {
+        const texture = await new THREE.TextureLoader().loadAsync(layer.url);
+        mesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(scaleW, scaleH),
+          new THREE.MeshBasicMaterial({ map: texture, transparent: true, opacity: layer.opacity ?? 1, side: THREE.DoubleSide })
+        );
+      } else if (layer.type === "text") {
+        const canvas = document.createElement("canvas");
+        canvas.width = 512; canvas.height = 200;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "rgba(0,0,0,0.65)"; ctx.fillRect(0,0,512,200);
+        ctx.fillStyle = "#fff"; ctx.font = "bold 52px sans-serif";
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(layer.content || "", 256, 100);
+        mesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(scaleW, scaleH),
+          new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true, opacity: layer.opacity ?? 1, side: THREE.DoubleSide })
+        );
+      }
+
+      if (mesh) {
+        mesh.position.set(posX, posY, 0.01);
+        mesh.rotation.z = -((layer.rotation || 0) * Math.PI) / 180;
+        anchor.group.add(mesh);
+      }
+    }
+
+    anchor.onTargetFound = () => {
+      document.getElementById("scan-hint").style.display = "none";
+      document.getElementById("hud-text").textContent = "✓ AR Active — " + project.name;
+      videoElements.forEach(v => v.play().catch(() => {}));
+    };
+
+    anchor.onTargetLost = () => {
+      document.getElementById("scan-hint").style.display = "block";
+      document.getElementById("hud-text").textContent = "Scanning...";
+      videoElements.forEach(v => v.pause());
+    };
+
+    setProgress("Opening camera...", 97);
+    await mindarThree.start();
+
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("scan-hint").style.display = "block";
+    document.getElementById("hud").style.display = "flex";
+
+    renderer.setAnimationLoop(() => renderer.render(scene, camera));
+
+  } catch (e) {
+    showError("AR failed: " + e.message);
+  }
+}
+</script>
 </body>
 </html>
