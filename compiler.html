@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Feel AR — Compile Target</title>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700&display=swap');
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: #07070e;
+      color: #eeeef8;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      background: #0f0f1a;
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 20px;
+      padding: 40px;
+      width: 100%;
+      max-width: 480px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+    }
+    .logo {
+      font-size: 13px;
+      font-weight: 700;
+      color: #63caff;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 28px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .logo-mark {
+      width: 28px; height: 28px;
+      background: linear-gradient(135deg, #63caff, #c084fc);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; color: #07070e; font-weight: 900;
+    }
+    h1 { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+    .sub {
+      font-size: 13px; color: rgba(238,238,248,0.45);
+      line-height: 1.7; margin-bottom: 32px;
+      font-family: 'DM Mono', monospace;
+    }
+
+    /* Drop zone */
+    .dropzone {
+      border: 2px dashed rgba(99,202,255,0.25);
+      border-radius: 14px;
+      padding: 40px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: rgba(99,202,255,0.03);
+      margin-bottom: 20px;
+    }
+    .dropzone:hover, .dropzone.dragover {
+      border-color: #63caff;
+      background: rgba(99,202,255,0.07);
+    }
+    .dropzone-icon { font-size: 40px; margin-bottom: 12px; }
+    .dropzone h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+    .dropzone p { font-size: 12px; color: rgba(238,238,248,0.4); }
+    #file-input { display: none; }
+
+    /* Preview */
+    #preview-wrap {
+      display: none;
+      margin-bottom: 20px;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.07);
+      position: relative;
+    }
+    #preview-img { width: 100%; display: block; max-height: 220px; object-fit: cover; }
+    .preview-label {
+      position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+      background: rgba(7,7,14,0.85); border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 20px; padding: 5px 14px; font-size: 11px; color: rgba(238,238,248,0.6);
+      white-space: nowrap;
+    }
+
+    /* Status box */
+    #status-box {
+      display: none;
+      border-radius: 10px;
+      padding: 14px 16px;
+      font-size: 12px;
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+    #status-box.busy {
+      background: rgba(192,132,252,0.07);
+      border: 1px solid rgba(192,132,252,0.2);
+      color: #c084fc;
+    }
+    #status-box.ok {
+      background: rgba(74,222,128,0.07);
+      border: 1px solid rgba(74,222,128,0.2);
+      color: #4ade80;
+    }
+    #status-box.err {
+      background: rgba(248,113,113,0.07);
+      border: 1px solid rgba(248,113,113,0.2);
+      color: #f87171;
+    }
+    .status-row { display: flex; align-items: center; gap: 10px; }
+    .spin {
+      width: 14px; height: 14px; flex-shrink: 0;
+      border: 2px solid rgba(192,132,252,0.2);
+      border-top-color: #c084fc;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Progress bar */
+    .progress-wrap { margin-top: 10px; height: 4px; background: rgba(192,132,252,0.15); border-radius: 2px; overflow: hidden; }
+    .progress-fill { height: 100%; background: #c084fc; border-radius: 2px; transition: width 0.3s; width: 0%; }
+
+    /* Buttons */
+    .btn {
+      width: 100%; padding: 13px;
+      border-radius: 10px; border: none;
+      font-family: 'Outfit', sans-serif;
+      font-size: 14px; font-weight: 700;
+      cursor: pointer; transition: all 0.2s;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .btn-compile {
+      background: #63caff; color: #07070e;
+      margin-bottom: 12px;
+    }
+    .btn-compile:hover { background: #90dcff; transform: translateY(-1px); }
+    .btn-compile:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .btn-download {
+      background: #4ade80; color: #07070e;
+      display: none;
+    }
+    .btn-download:hover { background: #86efac; transform: translateY(-1px); }
+    .btn-reset {
+      background: transparent; color: rgba(238,238,248,0.4);
+      border: 1px solid rgba(255,255,255,0.07);
+      margin-top: 8px; font-size: 12px; padding: 9px;
+      display: none;
+    }
+    .btn-reset:hover { color: #eeeef8; border-color: rgba(255,255,255,0.15); }
+
+    .steps {
+      margin-top: 28px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      padding-top: 20px;
+    }
+    .steps-title { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: rgba(238,238,248,0.2); margin-bottom: 14px; }
+    .step { display: flex; gap: 12px; margin-bottom: 12px; align-items: flex-start; }
+    .step-num {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: rgba(99,202,255,0.1); border: 1px solid rgba(99,202,255,0.2);
+      color: #63caff; font-size: 11px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .step-text { font-size: 12px; color: rgba(238,238,248,0.5); line-height: 1.6; padding-top: 2px; }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <div class="logo">
+    <div class="logo-mark">◈</div>
+    Feel AR
+  </div>
+
+  <h1>Compile AR Target</h1>
+  <p class="sub">Upload your trigger image (JPG/PNG) to generate a <strong style="color:#eeeef8">.mind</strong> file for AR tracking.</p>
+
+  <!-- Drop zone -->
+  <div class="dropzone" id="dropzone" onclick="document.getElementById('file-input').click()">
+    <div class="dropzone-icon">🖼️</div>
+    <h3>Click or drag image here</h3>
+    <p>JPG, PNG, WEBP supported</p>
+  </div>
+  <input type="file" id="file-input" accept="image/*" />
+
+  <!-- Preview -->
+  <div id="preview-wrap">
+    <img id="preview-img" />
+    <div class="preview-label" id="preview-label">image.jpg</div>
+  </div>
+
+  <!-- Status -->
+  <div id="status-box">
+    <div class="status-row">
+      <div class="spin" id="status-spin"></div>
+      <span id="status-text">Loading...</span>
+    </div>
+    <div class="progress-wrap" id="progress-wrap" style="display:none">
+      <div class="progress-fill" id="progress-fill"></div>
+    </div>
+  </div>
+
+  <!-- Buttons -->
+  <button class="btn btn-compile" id="compile-btn" disabled onclick="startCompile()">
+    ⚡ Compile AR Target
+  </button>
+  <button class="btn btn-download" id="download-btn" onclick="downloadMind()">
+    ⬇ Download targets.mind
+  </button>
+  <button class="btn btn-reset" id="reset-btn" onclick="reset()">
+    ↺ Compile another image
+  </button>
+
+  <div class="steps">
+    <div class="steps-title">How to use</div>
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-text">Upload your trigger image and click <strong style="color:#eeeef8">Compile AR Target</strong></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-text">Wait for compilation (10–60 seconds). Download the <strong style="color:#eeeef8">targets.mind</strong> file.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-text">Go back to the <a href="/artivive-editor/" style="color:#63caff">editor</a>, open your project, and upload the <strong style="color:#eeeef8">targets.mind</strong> file.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let selectedFile = null;
+  let mindBuffer = null;
+
+  const dropzone    = document.getElementById('dropzone');
+  const fileInput   = document.getElementById('file-input');
+  const previewWrap = document.getElementById('preview-wrap');
+  const previewImg  = document.getElementById('preview-img');
+  const previewLabel= document.getElementById('preview-label');
+  const statusBox   = document.getElementById('status-box');
+  const statusSpin  = document.getElementById('status-spin');
+  const statusText  = document.getElementById('status-text');
+  const progressWrap= document.getElementById('progress-wrap');
+  const progressFill= document.getElementById('progress-fill');
+  const compileBtn  = document.getElementById('compile-btn');
+  const downloadBtn = document.getElementById('download-btn');
+  const resetBtn    = document.getElementById('reset-btn');
+
+  // Drag and drop
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropzone.classList.remove('dragover');
+    const f = e.dataTransfer.files[0];
+    if (f && f.type.startsWith('image/')) handleFile(f);
+  });
+
+  fileInput.addEventListener('change', e => {
+    if (e.target.files[0]) handleFile(e.target.files[0]);
+  });
+
+  function handleFile(file) {
+    selectedFile = file;
+    mindBuffer = null;
+    const url = URL.createObjectURL(file);
+    previewImg.src = url;
+    previewLabel.textContent = file.name + ' · ' + (file.size / 1024).toFixed(0) + ' KB';
+    previewWrap.style.display = 'block';
+    dropzone.style.display = 'none';
+    compileBtn.disabled = false;
+    downloadBtn.style.display = 'none';
+    resetBtn.style.display = 'none';
+    hideStatus();
+  }
+
+  function setStatus(msg, type = 'busy', pct = null) {
+    statusBox.style.display = 'block';
+    statusBox.className = 'status-box ' + type;
+    statusSpin.style.display = type === 'busy' ? 'block' : 'none';
+    statusText.textContent = msg;
+    if (pct !== null) {
+      progressWrap.style.display = 'block';
+      progressFill.style.width = pct + '%';
+    } else {
+      progressWrap.style.display = 'none';
+    }
+  }
+
+  function hideStatus() {
+    statusBox.style.display = 'none';
+  }
+
+  async function startCompile() {
+    if (!selectedFile) return;
+
+    compileBtn.disabled = true;
+    mindBuffer = null;
+
+    try {
+      // Wait for MINDAR to be available (script already loaded in <head>)
+      setStatus('Waiting for MindAR to initialise...', 'busy');
+
+      const Compiler = await waitForCompiler();
+      
+      setStatus('Decoding image...', 'busy', 5);
+
+      const img = await loadImage(selectedFile);
+
+      setStatus('Compiling AR target... 0%', 'busy', 10);
+
+      const compiler = new Compiler();
+      await compiler.compileImageTargets([img], (progress) => {
+        const pct = Math.round(progress * 100);
+        setStatus('Compiling AR target... ' + pct + '%', 'busy', 10 + pct * 0.8);
+      });
+
+      setStatus('Exporting .mind file...', 'busy', 92);
+      const buffer = await compiler.exportData();
+      mindBuffer = buffer;
+
+      setStatus('✓ Compilation complete! Click download below.', 'ok');
+      progressWrap.style.display = 'none';
+      downloadBtn.style.display = 'flex';
+      resetBtn.style.display = 'flex';
+
+    } catch(e) {
+      setStatus('Error: ' + e.message, 'err');
+      compileBtn.disabled = false;
+    }
+  }
+
+  function waitForCompiler() {
+    return new Promise((resolve, reject) => {
+      const find = () => {
+        if (window.MINDAR?.IMAGE?.Compiler) return window.MINDAR.IMAGE.Compiler;
+        for (const key of Object.keys(window)) {
+          try {
+            const v = window[key];
+            if (typeof v === 'function' && typeof v.prototype?.compileImageTargets === 'function') return v;
+            if (v && typeof v === 'object') {
+              for (const k of Object.keys(v)) {
+                const u = v[k];
+                if (typeof u === 'function' && typeof u.prototype?.compileImageTargets === 'function') return u;
+              }
+            }
+          } catch(e) {}
+        }
+        return null;
+      };
+
+      const C = find();
+      if (C) { resolve(C); return; }
+
+      // Poll — script is in <head> so it's loading
+      let tries = 0;
+      const poll = setInterval(() => {
+        const C = find();
+        if (C) { clearInterval(poll); resolve(C); return; }
+        if (++tries > 100) { clearInterval(poll); reject(new Error('MindAR compiler did not load. Check internet connection.')); }
+      }, 300);
+    });
+  }
+
+  function loadImage(file) {
+    return new Promise((res, rej) => {
+      const img = new Image();
+      img.onload = () => res(img);
+      img.onerror = () => rej(new Error('Could not decode image.'));
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
+  function downloadMind() {
+    if (!mindBuffer) return;
+    const blob = new Blob([mindBuffer], { type: 'application/octet-stream' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = 'targets.mind';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function reset() {
+    selectedFile = null;
+    mindBuffer = null;
+    fileInput.value = '';
+    previewWrap.style.display = 'none';
+    dropzone.style.display = 'block';
+    compileBtn.disabled = true;
+    downloadBtn.style.display = 'none';
+    resetBtn.style.display = 'none';
+    hideStatus();
+  }
+</script>
+
+</body>
+</html>
