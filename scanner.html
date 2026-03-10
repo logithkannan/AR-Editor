@@ -1,349 +1,251 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Feel AR — Scanner</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+<title>Feel AR Scanner</title>
 
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700&display=swap');
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Outfit', sans-serif; color: white; }
+<script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
-    #camera-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+<style>
+body{
+margin:0;
+overflow:hidden;
+background:#000;
+font-family:sans-serif;
+}
 
-    a-scene { position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 2 !important; background: transparent !important; pointer-events: none; }
-    a-scene canvas { background: transparent !important; }
+#loading{
+position:fixed;
+inset:0;
+display:flex;
+align-items:center;
+justify-content:center;
+background:#000;
+color:white;
+font-size:18px;
+z-index:10;
+}
 
-    #loading-screen {
-      position: fixed; inset: 0; background: #07070e;
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      gap: 18px; z-index: 100; text-align: center; padding: 24px;
-    }
-    .logo { font-size: 24px; font-weight: 700; color: #63caff; }
-    .spinner { width: 48px; height: 48px; border: 3px solid rgba(99,202,255,0.15); border-top-color: #63caff; border-radius: 50%; animation: spin 0.8s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .load-status { font-size: 13px; color: rgba(255,255,255,0.45); font-weight: 300; }
-
-    #error-screen {
-      position: fixed; inset: 0; background: #07070e;
-      display: none; flex-direction: column; align-items: center; justify-content: center;
-      gap: 14px; z-index: 100; text-align: center; padding: 28px;
-    }
-    .err-icon { font-size: 52px; }
-    .err-title { font-size: 20px; font-weight: 700; color: #f87171; }
-    .err-msg { font-size: 12px; color: rgba(255,255,255,0.45); line-height: 1.8; max-width: 300px; }
-    .retry-btn { background: #63caff; color: #07070e; border: none; padding: 12px 28px; border-radius: 30px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: 'Outfit', sans-serif; }
-
-    #instruction-container {
-      position: fixed; bottom: 50px; width: 100%; display: flex; justify-content: center;
-      pointer-events: none; z-index: 20; transition: opacity 0.3s ease;
-    }
-    .instruction-pill {
-      background: rgba(15,15,15,0.65); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(255,255,255,0.1); padding: 12px 24px; border-radius: 50px;
-      display: flex; align-items: center; gap: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-    }
-    .instruction-text { font-weight: 500; font-size: 1rem; letter-spacing: 0.5px; }
-
-    #unmute-btn {
-      position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-      z-index: 20; background: rgba(0,0,0,0.75); color: #fff;
-      border: 1px solid rgba(255,255,255,0.3); border-radius: 30px;
-      padding: 10px 22px; font-size: 0.9rem; cursor: pointer;
-      font-family: 'Outfit', sans-serif; display: none; backdrop-filter: blur(8px);
-    }
-
-    #viewfinder-layer { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
-    .corner { position: absolute; width: 36px; height: 36px; border-color: rgba(255,255,255,0.35); border-style: solid; border-width: 0; }
-    .corner-tl { top: 28px; left: 28px; border-top-width: 2px; border-left-width: 2px; border-radius: 4px 0 0 0; }
-    .corner-tr { top: 28px; right: 28px; border-top-width: 2px; border-right-width: 2px; border-radius: 0 4px 0 0; }
-    .corner-bl { bottom: 28px; left: 28px; border-bottom-width: 2px; border-left-width: 2px; border-radius: 0 0 0 4px; }
-    .corner-br { bottom: 28px; right: 28px; border-bottom-width: 2px; border-right-width: 2px; border-radius: 0 0 4px 0; }
-
-    #project-badge {
-      position: fixed; top: 24px; left: 24px; background: rgba(15,15,15,0.6);
-      backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px;
-      padding: 8px 16px; font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.7);
-      z-index: 20; display: none;
-    }
-  </style>
+#unmute{
+position:fixed;
+bottom:40px;
+left:50%;
+transform:translateX(-50%);
+padding:10px 20px;
+border-radius:30px;
+border:none;
+background:#ffffff;
+color:#000;
+font-weight:bold;
+display:none;
+z-index:20;
+}
+</style>
 </head>
+
 <body>
 
-<video id="camera-bg" autoplay playsinline muted></video>
-
-<div id="loading-screen">
-  <div class="logo">◈ Feel AR</div>
-  <div class="spinner"></div>
-  <div class="load-status" id="load-status">Loading project...</div>
-</div>
-
-<div id="error-screen">
-  <div class="err-icon">⚠️</div>
-  <div class="err-title">Something went wrong</div>
-  <div class="err-msg" id="error-msg">Unknown error</div>
-  <button class="retry-btn" onclick="location.reload()">Try Again</button>
-</div>
-
-<div id="viewfinder-layer">
-  <div class="corner corner-tl"></div>
-  <div class="corner corner-tr"></div>
-  <div class="corner corner-bl"></div>
-  <div class="corner corner-br"></div>
-</div>
-
-<div id="project-badge"></div>
-<button id="unmute-btn">🔊 Tap to Unmute</button>
-
-<div id="instruction-container">
-  <div class="instruction-pill">
-    <span class="instruction-text">Point camera at the image</span>
-  </div>
-</div>
-
-<!-- Hidden video sources — loaded before scene builds -->
-<div id="video-sources" style="display:none"></div>
+<div id="loading">Loading AR...</div>
+<button id="unmute">🔊 Tap to Unmute</button>
 
 <div id="scene-container"></div>
 
 <script>
-const GITHUB_USER = "logithkannan";
-const GITHUB_REPO = "feel-ar-data";
-const rawUrl = (path) => `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/${path}?t=${Date.now()}`;
-const projectId = new URLSearchParams(window.location.search).get("project");
 
-let audioUnlocked = false;
-let targetVisible = false;
-let videoElements = []; // raw <video> DOM elements
+const GITHUB_USER="logithkannan"
+const GITHUB_REPO="feel-ar-data"
 
-function setStatus(msg) { document.getElementById("load-status").textContent = msg; }
+const raw=(path)=>`https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/${path}?t=${Date.now()}`
 
-function showError(msg) {
-  document.getElementById("loading-screen").style.display = "none";
-  document.getElementById("error-screen").style.display = "flex";
-  document.getElementById("error-msg").textContent = msg;
+const projectId=new URLSearchParams(location.search).get("project")
+
+let audioUnlocked=false
+let videos=[]
+
+function unlockAudio(){
+audioUnlocked=true
+videos.forEach(v=>{
+v.muted=false
+v.play().catch(()=>{})
+})
+document.getElementById("unmute").style.display="none"
 }
 
-function unlockAudio() {
-  if (audioUnlocked) return;
-  audioUnlocked = true;
-  try { const AC = window.AudioContext || window.webkitAudioContext; if (AC) new AC().resume(); } catch(e) {}
-  videoElements.forEach(v => { v.muted = false; });
-  if (targetVisible) videoElements.forEach(v => v.play().catch(() => {}));
-  document.getElementById("unmute-btn").style.display = "none";
-}
-document.addEventListener("click", unlockAudio);
-document.addEventListener("touchend", unlockAudio);
+document.getElementById("unmute").onclick=unlockAudio
+document.body.addEventListener("click",unlockAudio,{once:true})
 
-async function startCamera() {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
-    document.getElementById("camera-bg").srcObject = stream;
-  } catch(e) { console.warn("Camera bg:", e); }
-}
-startCamera();
+async function init(){
 
-async function init() {
-  if (!projectId) { showError("No project ID in URL. Open this link from the editor."); return; }
-
-  setStatus("Loading project...");
-  let project;
-  try {
-    const res = await fetch(rawUrl(`projects/${projectId}.json`));
-    if (!res.ok) throw new Error(`Project not found (${res.status}). Save it in the editor first.`);
-    project = await res.json();
-  } catch(e) { showError(e.message); return; }
-
-  if (!project.mindFileUrl) { showError("No AR target file. Upload a targets.mind in the editor."); return; }
-  if (!project.layers?.length) { showError("No layers added yet. Add content in the editor."); return; }
-
-  const badge = document.getElementById("project-badge");
-  badge.textContent = project.name;
-  badge.style.display = "block";
-
-  setStatus("Building AR scene...");
-  buildScene(project);
+if(!projectId){
+alert("No project id")
+return
 }
 
-function buildScene(project) {
-  const W = 500, H = 360;
+let project
 
-  // ── Pre-create video elements outside A-Frame so they load properly ─────
-  const videoSources = document.getElementById("video-sources");
-  project.layers.forEach((layer, i) => {
-    if (layer.type === "video") {
-      const v = document.createElement("video");
-      v.id = `vid-${i}`;
-      v.src = layer.url;
-      v.loop = true;
-      v.muted = true;
-      v.playsInline = true;
-      v.setAttribute("playsinline", "");
-      v.setAttribute("webkit-playsinline", "");
-      v.crossOrigin = "anonymous";
-      v.preload = "auto";
-      videoSources.appendChild(v);
-      videoElements.push(v);
-    }
-  });
+try{
 
-  let assetsHTML = "";
-  let entitiesHTML = "";
+const res=await fetch(raw(`projects/${projectId}.json`))
+project=await res.json()
 
-  project.layers.forEach((layer, i) => {
-    const id = `layer-${i}`;
-    const scaleW = (layer.width / W).toFixed(3);
-    const scaleH = (layer.height / H).toFixed(3);
-    const posX   = (((layer.x + layer.width  / 2) - W / 2) / W).toFixed(3);
-    const posY   = (-((layer.y + layer.height / 2) - H / 2) / H).toFixed(3);
-    const rotZ   = (-(layer.rotation || 0)).toFixed(1);
-    const opac   = (layer.opacity ?? 1).toFixed(2);
+}catch(e){
 
-    if (layer.type === "video") {
-      // Register the pre-created video element as an asset
-      assetsHTML += `<video id="${id}-src" src="${layer.url}" loop muted playsinline webkit-playsinline crossorigin="anonymous" preload="auto"></video>`;
+alert("Failed to load project")
+return
 
-      // FIX 1: Use material attribute for opacity instead of opacity attribute
-      // FIX 2: Use autoplay component and proper material
-      entitiesHTML += `
-        <a-video id="${id}"
-          src="#${id}-src"
-          width="${scaleW}" height="${scaleH}"
-          position="${posX} ${posY} 0.001"
-          rotation="0 0 ${rotZ}"
-          material="opacity: ${opac}; transparent: true; shader: flat; src: #${id}-src"
-          visible="false">
-        </a-video>`;
-
-    } else if (layer.type === "image") {
-      assetsHTML += `<img id="${id}-src" src="${layer.url}" crossorigin="anonymous" />`;
-      entitiesHTML += `
-        <a-image id="${id}"
-          src="#${id}-src"
-          width="${scaleW}" height="${scaleH}"
-          position="${posX} ${posY} 0.001"
-          rotation="0 0 ${rotZ}"
-          material="opacity: ${opac}; transparent: true; shader: flat; src: #${id}-src"
-          visible="false">
-        </a-image>`;
-
-    } else if (layer.type === "text") {
-      const textWidth = ((layer.width / W) * 2).toFixed(3);
-      const escaped = (layer.content || "").replace(/"/g, "&quot;");
-      entitiesHTML += `
-        <a-text id="${id}"
-          value="${escaped}"
-          align="center" color="white"
-          width="${textWidth}"
-          position="${posX} ${posY} 0.001"
-          opacity="${opac}"
-          visible="false">
-        </a-text>`;
-    }
-  });
-
-  document.getElementById("scene-container").innerHTML = `
-    <a-scene
-      mindar-image="imageTargetSrc: ${project.mindFileUrl}; uiScanning: no; uiLoading: no;"
-      vr-mode-ui="enabled: false"
-      device-orientation-permission-ui="enabled: true"
-      renderer="colorManagement: true; alpha: true; antialias: false;"
-      color-space="sRGB">
-
-      <a-assets timeout="10000">
-        ${assetsHTML}
-      </a-assets>
-
-      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-
-      <a-entity mindar-image-target="targetIndex: 0" id="ar-target">
-        ${entitiesHTML}
-      </a-entity>
-    </a-scene>`;
-
-  const scene = document.querySelector("a-scene");
-
-  scene.addEventListener("loaded", () => {
-    // Hide MindAR's own camera feed video (not our assets)
-    setTimeout(() => {
-      document.querySelectorAll("a-scene video").forEach(v => {
-        const isAsset = project.layers.some((_, i) => v.id === `layer-${i}-src`);
-        if (!isAsset) v.style.display = "none";
-      });
-    }, 500);
-
-    document.getElementById("loading-screen").style.display = "none";
-
-    const arTarget  = document.getElementById("ar-target");
-    const instruction = document.getElementById("instruction-container");
-    const unmute    = document.getElementById("unmute-btn");
-
-    arTarget.addEventListener("targetFound", () => {
-      targetVisible = true;
-      instruction.style.opacity = "0";
-
-      // Show all layers
-      project.layers.forEach((_, i) => {
-        const el = document.getElementById(`layer-${i}`);
-        if (el) el.setAttribute("visible", true);
-      });
-
-      // Play all videos — get the <video> from inside A-Frame assets
-      project.layers.forEach((layer, i) => {
-        if (layer.type !== "video") return;
-        // Try both the asset video and our pre-created one
-        const assetVid = document.getElementById(`layer-${i}-src`);
-        const preVid   = document.getElementById(`vid-${i}`);
-
-        [assetVid, preVid].forEach(v => {
-          if (!v) return;
-          v.muted = !audioUnlocked;
-          v.play()
-            .then(() => { if (!audioUnlocked) unmute.style.display = "block"; })
-            .catch(() => { unmute.style.display = "block"; });
-        });
-      });
-    });
-
-    arTarget.addEventListener("targetLost", () => {
-      targetVisible = false;
-      instruction.style.opacity = "1";
-      unmute.style.display = "none";
-
-      project.layers.forEach((_, i) => {
-        const el = document.getElementById(`layer-${i}`);
-        if (el) el.setAttribute("visible", false);
-      });
-
-      // Pause all videos
-      project.layers.forEach((layer, i) => {
-        if (layer.type !== "video") return;
-        [document.getElementById(`layer-${i}-src`), document.getElementById(`vid-${i}`)].forEach(v => {
-          if (v) { v.pause(); v.currentTime = 0; }
-        });
-      });
-    });
-  });
-
-  // iOS DeviceOrientation permission
-  if (typeof DeviceOrientationEvent?.requestPermission === "function") {
-    const req = () => {
-      DeviceOrientationEvent.requestPermission()
-        .then(r => { if (r === "granted") window.addEventListener("deviceorientation", () => {}); })
-        .catch(console.error);
-      document.removeEventListener("touchend", req);
-    };
-    document.addEventListener("touchend", req);
-  }
 }
 
-init();
+buildScene(project)
+
+}
+
+function buildScene(project){
+
+let assets=""
+let layers=""
+
+project.layers.forEach((layer,i)=>{
+
+const id=`layer-${i}`
+
+const scaleW=(layer.width/500).toFixed(3)
+const scaleH=(layer.height/360).toFixed(3)
+
+const posX=(((layer.x+layer.width/2)-250)/500).toFixed(3)
+const posY=(-((layer.y+layer.height/2)-180)/360).toFixed(3)
+
+if(layer.type==="video"){
+
+assets+=`
+<video id="${id}-src"
+src="${layer.url}"
+loop
+playsinline
+webkit-playsinline
+crossorigin="anonymous"
+preload="auto">
+</video>`
+
+layers+=`
+<a-video id="${id}"
+src="#${id}-src"
+width="${scaleW}"
+height="${scaleH}"
+position="${posX} ${posY} 0"
+rotation="0 0 ${-(layer.rotation||0)}"
+visible="false">
+</a-video>`
+
+}
+
+if(layer.type==="image"){
+
+assets+=`<img id="${id}-src" src="${layer.url}" crossorigin="anonymous">`
+
+layers+=`
+<a-image id="${id}"
+src="#${id}-src"
+width="${scaleW}"
+height="${scaleH}"
+position="${posX} ${posY} 0"
+visible="false">
+</a-image>`
+}
+
+})
+
+document.getElementById("scene-container").innerHTML=`
+
+<a-scene
+mindar-image="imageTargetSrc:${project.mindFileUrl};uiScanning:no;uiLoading:no"
+vr-mode-ui="enabled:false"
+device-orientation-permission-ui="enabled:true"
+renderer="alpha:true">
+
+<a-assets>
+
+${assets}
+
+</a-assets>
+
+<a-camera position="0 0 0" look-controls="enabled:false"></a-camera>
+
+<a-entity mindar-image-target="targetIndex:0" id="target">
+
+${layers}
+
+</a-entity>
+
+</a-scene>
+`
+
+const scene=document.querySelector("a-scene")
+
+scene.addEventListener("loaded",()=>{
+
+document.getElementById("loading").style.display="none"
+
+const target=document.getElementById("target")
+
+target.addEventListener("targetFound",()=>{
+
+project.layers.forEach((layer,i)=>{
+
+const el=document.getElementById(`layer-${i}`)
+el.setAttribute("visible",true)
+
+if(layer.type==="video"){
+
+const vid=document.getElementById(`layer-${i}-src`)
+videos.push(vid)
+
+vid.muted=!audioUnlocked
+
+vid.play()
+.then(()=>{
+if(!audioUnlocked){
+document.getElementById("unmute").style.display="block"
+}
+})
+.catch(()=>{
+document.getElementById("unmute").style.display="block"
+})
+
+}
+
+})
+
+})
+
+target.addEventListener("targetLost",()=>{
+
+project.layers.forEach((layer,i)=>{
+
+const el=document.getElementById(`layer-${i}`)
+el.setAttribute("visible",false)
+
+if(layer.type==="video"){
+
+const vid=document.getElementById(`layer-${i}-src`)
+vid.pause()
+vid.currentTime=0
+
+}
+
+})
+
+})
+
+})
+
+}
+
+init()
+
 </script>
+
 </body>
 </html>
