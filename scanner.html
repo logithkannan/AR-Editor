@@ -107,6 +107,9 @@
   </div>
 </div>
 
+<!-- Hidden video sources — loaded before scene builds -->
+<div id="video-sources" style="display:none"></div>
+
 <div id="scene-container"></div>
 
 <script>
@@ -117,7 +120,7 @@ const projectId = new URLSearchParams(window.location.search).get("project");
 
 let audioUnlocked = false;
 let targetVisible = false;
-let videoElements = [];
+let videoElements = []; // raw <video> DOM elements
 
 function setStatus(msg) { document.getElementById("load-status").textContent = msg; }
 
@@ -169,7 +172,26 @@ async function init() {
 }
 
 function buildScene(project) {
-  const W = 500, H = 360; // editor canvas dimensions
+  const W = 500, H = 360;
+
+  // ── Pre-create video elements outside A-Frame so they load properly ─────
+  const videoSources = document.getElementById("video-sources");
+  project.layers.forEach((layer, i) => {
+    if (layer.type === "video") {
+      const v = document.createElement("video");
+      v.id = `vid-${i}`;
+      v.src = layer.url;
+      v.loop = true;
+      v.muted = true;
+      v.playsInline = true;
+      v.setAttribute("playsinline", "");
+      v.setAttribute("webkit-playsinline", "");
+      v.crossOrigin = "anonymous";
+      v.preload = "auto";
+      videoSources.appendChild(v);
+      videoElements.push(v);
+    }
+  });
 
   let assetsHTML = "";
   let entitiesHTML = "";
@@ -184,17 +206,45 @@ function buildScene(project) {
     const opac   = (layer.opacity ?? 1).toFixed(2);
 
     if (layer.type === "video") {
-      assetsHTML += `<video id="${id}-src" src="${layer.url}" preload="auto" loop muted playsinline webkit-playsinline crossorigin="anonymous"></video>`;
-      entitiesHTML += `<a-video id="${id}" src="#${id}-src" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.001" rotation="0 0 ${rotZ}" opacity="${opac}" visible="false"></a-video>`;
+      // Register the pre-created video element as an asset
+      assetsHTML += `<video id="${id}-src" src="${layer.url}" loop muted playsinline webkit-playsinline crossorigin="anonymous" preload="auto"></video>`;
+
+      // FIX 1: Use material attribute for opacity instead of opacity attribute
+      // FIX 2: Use autoplay component and proper material
+      entitiesHTML += `
+        <a-video id="${id}"
+          src="#${id}-src"
+          width="${scaleW}" height="${scaleH}"
+          position="${posX} ${posY} 0.001"
+          rotation="0 0 ${rotZ}"
+          material="opacity: ${opac}; transparent: true; shader: flat; src: #${id}-src"
+          visible="false">
+        </a-video>`;
 
     } else if (layer.type === "image") {
       assetsHTML += `<img id="${id}-src" src="${layer.url}" crossorigin="anonymous" />`;
-      entitiesHTML += `<a-image id="${id}" src="#${id}-src" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.001" rotation="0 0 ${rotZ}" opacity="${opac}" visible="false"></a-image>`;
+      entitiesHTML += `
+        <a-image id="${id}"
+          src="#${id}-src"
+          width="${scaleW}" height="${scaleH}"
+          position="${posX} ${posY} 0.001"
+          rotation="0 0 ${rotZ}"
+          material="opacity: ${opac}; transparent: true; shader: flat; src: #${id}-src"
+          visible="false">
+        </a-image>`;
 
     } else if (layer.type === "text") {
       const textWidth = ((layer.width / W) * 2).toFixed(3);
       const escaped = (layer.content || "").replace(/"/g, "&quot;");
-      entitiesHTML += `<a-text id="${id}" value="${escaped}" align="center" color="white" width="${textWidth}" position="${posX} ${posY} 0.001" opacity="${opac}" visible="false"></a-text>`;
+      entitiesHTML += `
+        <a-text id="${id}"
+          value="${escaped}"
+          align="center" color="white"
+          width="${textWidth}"
+          position="${posX} ${posY} 0.001"
+          opacity="${opac}"
+          visible="false">
+        </a-text>`;
     }
   });
 
@@ -206,7 +256,9 @@ function buildScene(project) {
       renderer="colorManagement: true; alpha: true; antialias: false;"
       color-space="sRGB">
 
-      <a-assets>${assetsHTML}</a-assets>
+      <a-assets timeout="10000">
+        ${assetsHTML}
+      </a-assets>
 
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
@@ -218,38 +270,44 @@ function buildScene(project) {
   const scene = document.querySelector("a-scene");
 
   scene.addEventListener("loaded", () => {
-    // Hide MindAR's own internal video
+    // Hide MindAR's own camera feed video (not our assets)
     setTimeout(() => {
       document.querySelectorAll("a-scene video").forEach(v => {
-        const isOurs = project.layers.some((_, i) => v.id === `layer-${i}-src`);
-        if (!isOurs) v.style.display = "none";
+        const isAsset = project.layers.some((_, i) => v.id === `layer-${i}-src`);
+        if (!isAsset) v.style.display = "none";
       });
     }, 500);
 
-    // Collect video elements
-    project.layers.forEach((layer, i) => {
-      if (layer.type === "video") {
-        const v = document.getElementById(`layer-${i}-src`);
-        if (v) videoElements.push(v);
-      }
-    });
-
     document.getElementById("loading-screen").style.display = "none";
 
-    const arTarget = document.getElementById("ar-target");
+    const arTarget  = document.getElementById("ar-target");
     const instruction = document.getElementById("instruction-container");
-    const unmute = document.getElementById("unmute-btn");
+    const unmute    = document.getElementById("unmute-btn");
 
     arTarget.addEventListener("targetFound", () => {
       targetVisible = true;
       instruction.style.opacity = "0";
+
+      // Show all layers
       project.layers.forEach((_, i) => {
         const el = document.getElementById(`layer-${i}`);
         if (el) el.setAttribute("visible", true);
       });
-      videoElements.forEach(v => {
-        v.play().then(() => { if (!audioUnlocked) unmute.style.display = "block"; })
-               .catch(() => { unmute.style.display = "block"; });
+
+      // Play all videos — get the <video> from inside A-Frame assets
+      project.layers.forEach((layer, i) => {
+        if (layer.type !== "video") return;
+        // Try both the asset video and our pre-created one
+        const assetVid = document.getElementById(`layer-${i}-src`);
+        const preVid   = document.getElementById(`vid-${i}`);
+
+        [assetVid, preVid].forEach(v => {
+          if (!v) return;
+          v.muted = !audioUnlocked;
+          v.play()
+            .then(() => { if (!audioUnlocked) unmute.style.display = "block"; })
+            .catch(() => { unmute.style.display = "block"; });
+        });
       });
     });
 
@@ -257,11 +315,19 @@ function buildScene(project) {
       targetVisible = false;
       instruction.style.opacity = "1";
       unmute.style.display = "none";
+
       project.layers.forEach((_, i) => {
         const el = document.getElementById(`layer-${i}`);
         if (el) el.setAttribute("visible", false);
       });
-      videoElements.forEach(v => { v.pause(); v.currentTime = 0; });
+
+      // Pause all videos
+      project.layers.forEach((layer, i) => {
+        if (layer.type !== "video") return;
+        [document.getElementById(`layer-${i}-src`), document.getElementById(`vid-${i}`)].forEach(v => {
+          if (v) { v.pause(); v.currentTime = 0; }
+        });
+      });
     });
   });
 
