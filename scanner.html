@@ -1,194 +1,266 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
   <title>Feel AR — Scanner</title>
+
   <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
-  
-  <script>
-    // Chroma Key Shader Component
-    AFRAME.registerComponent('chromakey-video', {
-      schema: {
-        src: { type: 'selector' },
-        threshold: { type: 'number', default: 0.25 },
-        color: { type: 'color', default: '#00FF00' },
-        enabled: { type: 'boolean', default: true }
-      },
-      init: function () {
-        const video = this.data.src;
-        if (!video) return;
-
-        const texture = new THREE.VideoTexture(video);
-        texture.minFilter = THREE.LinearFilter;
-        
-        // Custom Shader to remove green
-        this.material = new THREE.ShaderMaterial({
-          transparent: true,
-          uniforms: {
-            tex: { value: texture },
-            keyColor: { value: new THREE.Color(this.data.color) },
-            threshold: { value: this.data.threshold }
-          },
-          vertexShader: `
-            varying vec2 vUv;
-            void main() {
-              vUv = uv;
-              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-          `,
-          fragmentShader: `
-            uniform sampler2D tex;
-            uniform vec3 keyColor;
-            uniform float threshold;
-            varying vec2 vUv;
-            void main() {
-              vec4 col = texture2D(tex, vUv);
-              float diff = distance(col.rgb, keyColor);
-              if (diff < threshold) {
-                discard;
-              } else {
-                gl_FragColor = col;
-              }
-            }
-          `
-        });
-
-        this.el.getObject3D('mesh').material = this.material;
-        
-        // Ensure video plays
-        video.play().catch(() => {
-          document.body.addEventListener('click', () => video.play(), { once: true });
-        });
-      },
-      update: function() {
-        if (this.material) {
-          this.material.uniforms.threshold.value = this.data.threshold;
-        }
-      }
-    });
-  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
   <style>
-    body { margin: 0; overflow: hidden; font-family: sans-serif; background: #000; }
-    #ui { position: fixed; inset: 0; z-index: 100; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 40px 20px; }
-    #status { color: #fff; background: rgba(0,0,0,0.6); padding: 8px 16px; border-radius: 20px; font-size: 12px; backdrop-filter: blur(5px); border: 1px solid rgba(255,255,255,0.1); }
-    .scan-overlay { position: absolute; width: 70vw; height: 50vh; border: 2px solid rgba(99, 202, 255, 0.5); border-radius: 20px; top: 50%; left: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 0 1000px rgba(0,0,0,0.4); }
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700&display=swap');
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Outfit', sans-serif; color: white; }
+
+    #camera-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+
+    #scan-line {
+      position: fixed; top: 0; left: 0; width: 100%; height: 4px;
+      background: linear-gradient(to bottom, transparent, #63caff, transparent);
+      box-shadow: 0 0 15px #63caff; z-index: 15;
+      animation: scan 3s ease-in-out infinite; opacity: 0.6;
+    }
+    @keyframes scan { 0% { top: 15%; } 50% { top: 85%; } 100% { top: 15%; } }
+
+    #viewfinder-layer { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+    .corner { position: absolute; width: 36px; height: 36px; border-color: rgba(255,255,255,0.3); border-style: solid; border-width: 0; transition: all 0.3s ease; }
+    .corner-tl { top: 28px; left: 28px; border-top-width: 2px; border-left-width: 2px; }
+    .corner-tr { top: 28px; right: 28px; border-top-width: 2px; border-right-width: 2px; }
+    .corner-bl { bottom: 28px; left: 28px; border-bottom-width: 2px; border-left-width: 2px; }
+    .corner-br { bottom: 28px; right: 28px; border-bottom-width: 2px; border-right-width: 2px; }
+    .viewfinder-active .corner { border-color: #63caff; box-shadow: 0 0 15px rgba(99, 202, 255, 0.5); }
+
+    #scene-container { position: fixed; inset: 0; z-index: 2; }
+    a-scene { width: 100vw !important; height: 100vh !important; background: transparent !important; }
+
+    #loading-screen { position: fixed; inset: 0; background: #07070e; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; z-index: 100; }
+    .logo { font-size: 24px; font-weight: 700; color: #63caff; }
+    .spinner { width: 48px; height: 48px; border: 3px solid rgba(99,202,255,0.15); border-top-color: #63caff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #instruction-container { position: fixed; bottom: 50px; width: 100%; display: flex; justify-content: center; z-index: 20; transition: opacity 0.3s ease; }
+    .instruction-pill { background: rgba(15,15,15,0.65); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.1); padding: 12px 24px; border-radius: 50px; }
+
+    #unmute-btn { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 20; background: rgba(0,0,0,0.75); color: #fff; border-radius: 30px; padding: 10px 22px; display: none; cursor: pointer; border: none; font-family: inherit; }
   </style>
 </head>
 <body>
 
-  <div id="ui">
-    <div id="status">Initializing Camera...</div>
-    <div class="scan-overlay"></div>
-    <div id="status">Aim at the trigger image</div>
-  </div>
+<div id="scan-line"></div>
 
-  <a-scene id="scene" embedded color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
-    <a-assets id="assets-container"></a-assets>
-    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-    <a-entity id="target-container"></a-entity>
-  </a-scene>
+<div id="loading-screen">
+  <div class="logo">◈ Feel AR</div>
+  <div class="spinner"></div>
+</div>
 
-  <script>
-    const urlParams = new URLSearchParams(window.location.search);
-    const projectId = urlParams.get('project');
+<div id="viewfinder-layer">
+  <div class="corner corner-tl"></div>
+  <div class="corner corner-tr"></div>
+  <div class="corner corner-bl"></div>
+  <div class="corner corner-br"></div>
+</div>
 
-    async function initScanner() {
-      if (!projectId) {
-        document.getElementById('status').innerText = "No Project ID found.";
-        return;
-      }
+<div id="instruction-container">
+  <div class="instruction-pill"><span>Point camera at the image</span></div>
+</div>
 
-      try {
-        // 1. Fetch project data from your GitHub data repository
-        const response = await fetch(`https://raw.githubusercontent.com/logithkannan/feel-ar-data/main/projects/${projectId}.json`);
-        const project = await response.json();
+<button id="unmute-btn">🔊 Tap to Unmute Audio</button>
+<div id="scene-container"></div>
 
-        const assetsContainer = document.getElementById('assets-container');
-        const targetContainer = document.getElementById('target-container');
-        const statusEl = document.getElementById('status');
+<script>
+// --- CHROMA KEY COMPONENT ---
+AFRAME.registerComponent('chromakey-video', {
+  schema: {
+    src: { type: 'selector' },
+    color: { type: 'color', default: '#00FF00' },
+    threshold: { type: 'number', default: 0.15 },
+    enabled: { type: 'boolean', default: true }
+  },
+  init: function () {
+    if (!this.data.enabled) return;
+    const video = this.data.src;
+    const videoTexture = new THREE.VideoTexture(video);
+    videoTexture.minFilter = THREE.LinearFilter;
+    videoTexture.magFilter = THREE.LinearFilter;
+    videoTexture.format = THREE.RGBAFormat;
 
-        // 2. Set MindAR source
-        document.getElementById('scene').setAttribute('mindar-image', `imageTargetSrc: ${project.mindFileUrl}; autoStart: true;`);
+    const keyColor = new THREE.Color(this.data.color);
 
-        // 3. Create Scene Elements
-        let assetsHTML = '';
-        let entitiesHTML = '';
-
-        project.layers.forEach((layer, index) => {
-          const id = `layer-${index}`;
-          
-          // Calculate scale (normalized to MindAR space)
-          const scaleW = layer.width / 500;
-          const scaleH = layer.height / 500;
-          const posX = (layer.x - 250 + layer.width / 2) / 500;
-          const posY = -(layer.y - 180 + layer.height / 2) / 500;
-          const rotZ = -(layer.rotation || 0);
-
-          if (layer.type === "image") {
-            assetsHTML += `<img id="${id}-src" src="${layer.url}" crossorigin="anonymous">`;
-            entitiesHTML += `<a-image id="${id}" src="#${id}-src" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.01" rotation="0 0 ${rotZ}" opacity="${layer.opacity || 1}" visible="false"></a-image>`;
-          } 
-          
-          else if (layer.type === "video") {
-            assetsHTML += `<video id="${id}-src" src="${layer.url}" loop="true" muted="true" playsinline crossorigin="anonymous" webkit-playsinline preload="auto"></video>`;
-            
-            // NEW: Use the Editor's isGreenScreen property and Threshold
-            const isChroma = layer.isGreenScreen === true || layer.url.toLowerCase().includes('green');
-            const threshold = layer.chromaThreshold || 0.25;
-
-            if (isChroma) {
-              entitiesHTML += `<a-plane id="${id}" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.01" rotation="0 0 ${rotZ}" chromakey-video="src: #${id}-src; threshold: ${threshold}" visible="false"></a-plane>`;
-            } else {
-              entitiesHTML += `<a-video id="${id}" src="#${id}-src" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.01" rotation="0 0 ${rotZ}" material="shader: flat; transparent: true; opacity: ${layer.opacity || 1}" visible="false"></a-video>`;
-            }
-          } 
-          
-          else if (layer.type === "text") {
-            entitiesHTML += `<a-entity id="${id}" position="${posX} ${posY} 0.01" rotation="0 0 ${rotZ}" text="value: ${layer.content}; align: center; width: ${scaleW * 2}; color: white" visible="false"></a-entity>`;
+    this.material = new THREE.ShaderMaterial({
+      uniforms: {
+        tex: { value: videoTexture },
+        keyColor: { value: new THREE.Vector3(keyColor.r, keyColor.g, keyColor.b) },
+        threshold: { value: this.data.threshold }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D tex;
+        uniform vec3 keyColor;
+        uniform float threshold;
+        varying vec2 vUv;
+        void main() {
+          vec4 fColor = texture2D(tex, vUv);
+          float d = distance(fColor.rgb, keyColor);
+          if (d < threshold) {
+            discard;
+          } else {
+            gl_FragColor = fColor;
           }
-        });
+        }
+      `,
+      transparent: true
+    });
 
-        assetsContainer.innerHTML = assetsHTML;
-        
-        const targetEntity = document.createElement('a-entity');
-        targetEntity.setAttribute('mindar-image-target', 'targetIndex: 0');
-        targetEntity.innerHTML = entitiesHTML;
-        targetContainer.appendChild(targetEntity);
-
-        // 4. Handle Tracking Events
-        targetEntity.addEventListener("targetFound", () => {
-          statusEl.innerText = "Target Found";
-          project.layers.forEach((_, i) => {
-            const el = document.getElementById(`layer-${i}`);
-            el.setAttribute('visible', true);
-            const video = document.getElementById(`layer-${i}-src`);
-            if (video && video.tagName === 'VIDEO') video.play();
-          });
-        });
-
-        targetEntity.addEventListener("targetLost", () => {
-          statusEl.innerText = "Target Lost";
-          project.layers.forEach((_, i) => {
-            const el = document.getElementById(`layer-${i}`);
-            el.setAttribute('visible', false);
-            const video = document.getElementById(`layer-${i}-src`);
-            if (video && video.tagName === 'VIDEO') video.pause();
-          });
-        });
-
-        document.querySelector('a-scene').addEventListener('arReady', () => {
-          statusEl.innerText = "Scanner Ready";
-        });
-
-      } catch (err) {
-        console.error(err);
-        document.getElementById('status').innerText = "Error loading project.";
-      }
+    this.el.addEventListener('model-loaded', () => this.applyMaterial());
+    this.applyMaterial();
+  },
+  applyMaterial: function() {
+    const mesh = this.el.getObject3D('mesh');
+    if (mesh && this.material) mesh.material = this.material;
+  },
+  tick: function () {
+    if (this.material && this.material.uniforms.tex.value) {
+      this.material.uniforms.tex.value.needsUpdate = true;
     }
+  }
+});
 
-    window.onload = initScanner;
-  </script>
+const GITHUB_USER = "logithkannan";
+const GITHUB_REPO = "feel-ar-data";
+const rawUrl = (path) => `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/${path}?t=${Date.now()}`;
+const projectId = new URLSearchParams(window.location.search).get("project");
+
+let audioUnlocked = false;
+
+async function init() {
+  if (!projectId) {
+    alert("No project ID found in URL");
+    return;
+  }
+  try {
+    const res = await fetch(rawUrl(`projects/${projectId}.json`));
+    const project = await res.json();
+    buildScene(project);
+  } catch(e) { 
+    console.error("Failed to load project:", e);
+    document.getElementById("loading-screen").innerHTML = `<div class="logo">Project Not Found</div>`;
+  }
+}
+
+function buildScene(project) {
+  const W = 500, H = 360; // Editor Workspace dimensions
+  let assetsHTML = "";
+  let entitiesHTML = "";
+
+  project.layers.forEach((layer, i) => {
+    const id = `layer-${i}`;
+    const scaleW = (layer.width / W).toFixed(3);
+    const scaleH = (layer.height / H).toFixed(3);
+    const posX = (((layer.x + layer.width / 2) - W / 2) / W).toFixed(3);
+    const posY = (-((layer.y + layer.height / 2) - H / 2) / H).toFixed(3);
+    const rotZ = (-(layer.rotation || 0)).toFixed(1);
+    const opacity = layer.opacity !== undefined ? layer.opacity : 1;
+
+    if (layer.type === "video") {
+      assetsHTML += `<video id="${id}-src" src="${layer.url}" loop="true" muted="true" playsinline crossorigin="anonymous" webkit-playsinline preload="auto"></video>`;
+      
+      if (layer.isGreenScreen) {
+        entitiesHTML += `<a-plane id="${id}" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.01" rotation="0 0 ${rotZ}" chromakey-video="src: #${id}-src; threshold: ${layer.chromaThreshold || 0.25}" visible="false"></a-plane>`;
+      } else {
+        entitiesHTML += `<a-video id="${id}" src="#${id}-src" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.01" rotation="0 0 ${rotZ}" material="transparent: true; opacity: ${opacity}" visible="false"></a-video>`;
+      }
+
+    } else if (layer.type === "image") {
+      assetsHTML += `<img id="${id}-src" src="${layer.url}" crossorigin="anonymous" />`;
+      entitiesHTML += `<a-image id="${id}" src="#${id}-src" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.01" rotation="0 0 ${rotZ}" material="shader: flat; transparent: true; opacity: ${opacity}" visible="false"></a-image>`;
+    
+    } else if (layer.type === "text") {
+      // Create a background plane for text to ensure visibility if needed, or just raw text
+      entitiesHTML += `
+        <a-entity id="${id}" 
+          text="value: ${layer.content}; align: center; width: ${scaleW * 2}; color: white; opacity: ${opacity}" 
+          position="${posX} ${posY} 0.02" 
+          rotation="0 0 ${rotZ}" 
+          visible="false">
+        </a-entity>`;
+    }
+  });
+
+  document.getElementById("scene-container").innerHTML = `
+    <a-scene mindar-image="imageTargetSrc: ${project.mindFileUrl}; uiScanning: no; uiLoading: no;" vr-mode-ui="enabled: false" renderer="colorManagement: true; alpha: true;">
+      <a-assets timeout="10000">${assetsHTML}</a-assets>
+      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+      <a-entity mindar-image-target="targetIndex: 0" id="ar-target">${entitiesHTML}</a-entity>
+    </a-scene>`;
+
+  const scene = document.querySelector("a-scene");
+  
+  scene.addEventListener("loaded", () => {
+    document.getElementById("loading-screen").style.display = "none";
+    const arTarget = document.getElementById("ar-target");
+    const unmute = document.getElementById("unmute-btn");
+    const scanLine = document.getElementById("scan-line");
+    const viewfinder = document.getElementById("viewfinder-layer");
+
+    arTarget.addEventListener("targetFound", () => {
+      scanLine.style.display = "none";
+      viewfinder.classList.add("viewfinder-active");
+      document.getElementById("instruction-container").style.opacity = "0";
+      
+      project.layers.forEach((layer, i) => {
+        const el = document.getElementById(`layer-${i}`);
+        if (!el) return;
+        el.setAttribute("visible", true);
+        if (layer.type === "video") {
+          const v = document.getElementById(`layer-${i}-src`);
+          if (v) {
+            v.muted = !audioUnlocked;
+            v.play().catch(() => { 
+                if(!audioUnlocked) unmute.style.display = "block"; 
+            });
+          }
+        }
+      });
+    });
+
+    arTarget.addEventListener("targetLost", () => {
+      scanLine.style.display = "block";
+      viewfinder.classList.remove("viewfinder-active");
+      document.getElementById("instruction-container").style.opacity = "1";
+      unmute.style.display = "none";
+      
+      project.layers.forEach((layer, i) => {
+        const el = document.getElementById(`layer-${i}`);
+        if (el) el.setAttribute("visible", false);
+        if (layer.type === "video") {
+          const v = document.getElementById(`layer-${i}-src`);
+          if (v) { v.pause(); }
+        }
+      });
+    });
+  });
+}
+
+// Global click handler to unlock audio for mobile browsers
+document.addEventListener("click", () => {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  document.querySelectorAll('video').forEach(v => {
+    v.muted = false;
+    v.play().catch(() => {}); 
+  });
+  document.getElementById("unmute-btn").style.display = "none";
+});
+
+init();
+</script>
 </body>
 </html>
