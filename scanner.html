@@ -38,6 +38,7 @@
     #loading-screen { position: fixed; inset: 0; background: #07070e; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; z-index: 100; }
     .logo { font-size: 24px; font-weight: 700; color: #63caff; }
     .spinner { width: 48px; height: 48px; border: 3px solid rgba(99,202,255,0.15); border-top-color: #63caff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
     #instruction-container { position: fixed; bottom: 50px; width: 100%; display: flex; justify-content: center; z-index: 20; transition: opacity 0.3s ease; }
     .instruction-pill { background: rgba(15,15,15,0.65); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.1); padding: 12px 24px; border-radius: 50px; }
@@ -70,19 +71,26 @@
 <div id="scene-container"></div>
 
 <script>
-// --- FIXED CHROMA KEY SHADER ---
-AFRAME.registerShader('chromakey', {
+// --- ROBUST CHROMA KEY COMPONENT ---
+AFRAME.registerComponent('chromakey-video', {
   schema: {
-    src: {type: 'map'},
-    color: {type: 'color', default: '0 1 0'},
-    threshold: {type: 'number', default: 0.1}
+    src: { type: 'selector' },
+    color: { type: 'color', default: '#00FF00' },
+    threshold: { type: 'number', default: 0.15 }
   },
-  init: function(data) {
+  init: function () {
+    const videoTexture = new THREE.VideoTexture(this.data.src);
+    videoTexture.minFilter = THREE.LinearFilter;
+    videoTexture.magFilter = THREE.LinearFilter;
+    videoTexture.format = THREE.RGBAFormat;
+
+    const keyColor = new THREE.Color(this.data.color);
+
     this.material = new THREE.ShaderMaterial({
       uniforms: {
-        tex: {value: data.src},
-        keyColor: {value: new THREE.Color(data.color)},
-        threshold: {value: data.threshold}
+        tex: { value: videoTexture },
+        keyColor: { value: new THREE.Vector3(keyColor.r, keyColor.g, keyColor.b) },
+        threshold: { value: this.data.threshold }
       },
       vertexShader: `
         varying vec2 vUv;
@@ -108,14 +116,11 @@ AFRAME.registerShader('chromakey', {
       `,
       transparent: true
     });
+
+    this.el.getObject3D('mesh').material = this.material;
   },
-  update: function(data) {
-    this.material.uniforms.tex.value = data.src;
-    this.material.uniforms.keyColor.value = new THREE.Color(data.color);
-    this.material.uniforms.threshold.value = data.threshold;
-  },
-  // CRITICAL: Update the texture on every frame tick
-  tick: function() {
+  tick: function () {
+    // This ensures every frame of the video is actually uploaded to the GPU
     if (this.material.uniforms.tex.value) {
       this.material.uniforms.tex.value.needsUpdate = true;
     }
@@ -152,8 +157,9 @@ function buildScene(project) {
     const rotZ = (-(layer.rotation || 0)).toFixed(1);
 
     if (layer.type === "video") {
-      assetsHTML += `<video id="${id}-src" src="${layer.url}" loop="true" muted="true" playsinline crossorigin="anonymous" preload="auto"></video>`;
-      entitiesHTML += `<a-entity id="${id}" geometry="primitive: plane; width: ${scaleW}; height: ${scaleH}" position="${posX} ${posY} 0.01" rotation="0 0 ${rotZ}" material="shader: chromakey; src: #${id}-src; color: 0 1 0; threshold: 0.3; transparent: true" visible="false"></a-entity>`;
+      assetsHTML += `<video id="${id}-src" src="${layer.url}" loop="true" muted="true" playsinline crossorigin="anonymous" webkit-playsinline></video>`;
+      // Use the custom component here
+      entitiesHTML += `<a-plane id="${id}" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.01" rotation="0 0 ${rotZ}" chromakey-video="src: #${id}-src; threshold: 0.2" visible="false"></a-plane>`;
     } else if (layer.type === "image") {
       assetsHTML += `<img id="${id}-src" src="${layer.url}" crossorigin="anonymous" />`;
       entitiesHTML += `<a-image id="${id}" src="#${id}-src" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.01" rotation="0 0 ${rotZ}" material="shader: flat; transparent: true; opacity: ${layer.opacity || 1}" visible="false"></a-image>`;
@@ -214,7 +220,7 @@ document.addEventListener("click", () => {
   audioUnlocked = true;
   document.querySelectorAll('video').forEach(v => {
     v.muted = false;
-    v.play().catch(()=>{}); // Play to sync audio state
+    v.play().catch(() => {}); 
   });
   document.getElementById("unmute-btn").style.display = "none";
 });
