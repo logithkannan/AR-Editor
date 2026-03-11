@@ -12,14 +12,20 @@
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700&display=swap');
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Outfit', sans-serif; color: white; }
+    
+    /* Ensure body is transparent so MindAR camera shows through */
+    html, body { 
+      width: 100%; height: 100%; overflow: hidden; 
+      background: transparent !important; 
+      font-family: 'Outfit', sans-serif; color: white; 
+    }
 
+    /* Scanning line */
     #scan-line {
       position: fixed; top: 0; left: 0; width: 100%; height: 4px;
       background: linear-gradient(to bottom, transparent, #63caff, transparent);
       box-shadow: 0 0 15px #63caff; z-index: 15;
       animation: scan 3s ease-in-out infinite; opacity: 0.6;
-      display: block;
     }
     @keyframes scan { 0% { top: 15%; } 50% { top: 85%; } 100% { top: 15%; } }
 
@@ -31,10 +37,15 @@
     .corner-br { bottom: 28px; right: 28px; border-bottom-width: 2px; border-right-width: 2px; }
     .viewfinder-active .corner { border-color: #63caff; box-shadow: 0 0 15px rgba(99, 202, 255, 0.5); }
 
-    #scene-container { position: fixed; inset: 0; z-index: 2; }
-    a-scene { width: 100vw !important; height: 100vh !important; }
+    /* Scene Container MUST be transparent */
+    #scene-container { position: fixed; inset: 0; z-index: 1; pointer-events: none; }
+    a-scene { width: 100% !important; height: 100% !important; }
 
-    #loading-screen { position: fixed; inset: 0; background: #07070e; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; z-index: 100; }
+    #loading-screen { 
+      position: fixed; inset: 0; background: #07070e; 
+      display: flex; flex-direction: column; align-items: center; 
+      justify-content: center; gap: 18px; z-index: 100; 
+    }
     .logo { font-size: 24px; font-weight: 700; color: #63caff; }
     .spinner { width: 48px; height: 48px; border: 3px solid rgba(99,202,255,0.15); border-top-color: #63caff; border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -42,13 +53,11 @@
     #instruction-container { position: fixed; bottom: 50px; width: 100%; display: flex; justify-content: center; z-index: 20; transition: opacity 0.3s ease; }
     .instruction-pill { background: rgba(15,15,15,0.65); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.1); padding: 12px 24px; border-radius: 50px; }
 
-    /* Updated Unmute Button Styling */
     #unmute-btn { 
       position: fixed; top: 20px; left: 50%; transform: translateX(-50%); 
       z-index: 200; background: #63caff; color: #000; 
       border-radius: 30px; padding: 12px 24px; display: none; 
       cursor: pointer; border: none; font-family: inherit; font-weight: 700;
-      box-shadow: 0 4px 15px rgba(99, 202, 255, 0.4);
     }
   </style>
 </head>
@@ -73,9 +82,11 @@
 </div>
 
 <button id="unmute-btn">🔊 Tap to Unmute</button>
+
 <div id="scene-container"></div>
 
 <script>
+// --- CHROMA KEY COMPONENT ---
 AFRAME.registerComponent('chromakey-video', {
   schema: {
     src: { type: 'selector' },
@@ -85,8 +96,6 @@ AFRAME.registerComponent('chromakey-video', {
   init: function () {
     const video = this.data.src;
     const videoTexture = new THREE.VideoTexture(video);
-    videoTexture.minFilter = THREE.LinearFilter;
-    videoTexture.magFilter = THREE.LinearFilter;
     videoTexture.format = THREE.RGBAFormat;
     const keyColor = new THREE.Color(this.data.color);
     this.material = new THREE.ShaderMaterial({
@@ -160,60 +169,63 @@ function buildScene(project) {
     }
   });
 
+  // MIND-AR SCENE
   document.getElementById("scene-container").innerHTML = `
     <a-scene mindar-image="imageTargetSrc: ${project.mindFileUrl}; uiScanning: no; uiLoading: no;" vr-mode-ui="enabled: false" renderer="colorManagement: true; alpha: true;">
       <a-assets timeout="10000">${assetsHTML}</a-assets>
-      <a-camera position="0 0 0" look-controls="enabled: false" cursor="fuse: false; rayOrigin: mouse;" raycaster="far: 10000; objects: .clickable"></a-camera>
+      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
       <a-entity mindar-image-target="targetIndex: 0" id="ar-target">${entitiesHTML}</a-entity>
     </a-scene>`;
 
   const scene = document.querySelector("a-scene");
-  scene.addEventListener("loaded", () => {
-    document.getElementById("loading-screen").style.display = "none";
+  
+  // Listen for the camera-ready event
+  scene.addEventListener("renderstart", () => {
+    // Hide loading screen only when rendering has actually started
+    setTimeout(() => {
+      document.getElementById("loading-screen").style.display = "none";
+    }, 500);
+  });
+
+  const arTarget = document.getElementById("ar-target");
+  const unmuteBtn = document.getElementById("unmute-btn");
+  const scanLine = document.getElementById("scan-line");
+  const viewfinder = document.getElementById("viewfinder-layer");
+
+  arTarget.addEventListener("targetFound", () => {
+    scanLine.style.display = "none";
+    viewfinder.classList.add("viewfinder-active");
+    document.getElementById("instruction-container").style.opacity = "0";
     
-    const arTarget = document.getElementById("ar-target");
-    const unmuteBtn = document.getElementById("unmute-btn");
-    const scanLine = document.getElementById("scan-line");
-    const viewfinder = document.getElementById("viewfinder-layer");
-
-    arTarget.addEventListener("targetFound", () => {
-      scanLine.style.display = "none";
-      viewfinder.classList.add("viewfinder-active");
-      document.getElementById("instruction-container").style.opacity = "0";
-      
-      project.layers.forEach((layer, i) => {
-        const el = document.getElementById(`layer-${i}`);
-        if (!el) return;
-        el.setAttribute("visible", true);
-        if (layer.type === "video") {
-          const v = document.getElementById(`layer-${i}-src`);
-          v.muted = !audioUnlocked;
-          // Attempt playback. If browser blocks audio, show the button.
-          v.play().catch(() => {
-            if(!audioUnlocked) unmuteBtn.style.display = "block";
-          });
-        }
-      });
+    project.layers.forEach((layer, i) => {
+      const el = document.getElementById(`layer-${i}`);
+      if (!el) return;
+      el.setAttribute("visible", true);
+      if (layer.type === "video") {
+        const v = document.getElementById(`layer-${i}-src`);
+        v.muted = !audioUnlocked;
+        v.play().catch(() => { if(!audioUnlocked) unmuteBtn.style.display = "block"; });
+      }
     });
+  });
 
-    arTarget.addEventListener("targetLost", () => {
-      scanLine.style.display = "block";
-      viewfinder.classList.remove("viewfinder-active");
-      document.getElementById("instruction-container").style.opacity = "1";
-      unmuteBtn.style.display = "none";
-      project.layers.forEach((layer, i) => {
-        const el = document.getElementById(`layer-${i}`);
-        if (el) el.setAttribute("visible", false);
-        if (layer.type === "video") {
-          const v = document.getElementById(`layer-${i}-src`);
-          if (v) { v.pause(); v.currentTime = 0; }
-        }
-      });
+  arTarget.addEventListener("targetLost", () => {
+    scanLine.style.display = "block";
+    viewfinder.classList.remove("viewfinder-active");
+    document.getElementById("instruction-container").style.opacity = "1";
+    unmuteBtn.style.display = "none";
+    project.layers.forEach((layer, i) => {
+      const el = document.getElementById(`layer-${i}`);
+      if (el) el.setAttribute("visible", false);
+      if (layer.type === "video") {
+        const v = document.getElementById(`layer-${i}-src`);
+        if (v) { v.pause(); v.currentTime = 0; }
+      }
     });
   });
 }
 
-// Universal interaction to unlock audio
+// Global click to enable audio
 document.addEventListener("click", () => {
   audioUnlocked = true;
   document.querySelectorAll('video').forEach(v => {
