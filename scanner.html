@@ -13,14 +13,12 @@
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700&display=swap');
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     
-    /* Ensure body is transparent so MindAR camera shows through */
     html, body { 
       width: 100%; height: 100%; overflow: hidden; 
       background: transparent !important; 
       font-family: 'Outfit', sans-serif; color: white; 
     }
 
-    /* Scanning line */
     #scan-line {
       position: fixed; top: 0; left: 0; width: 100%; height: 4px;
       background: linear-gradient(to bottom, transparent, #63caff, transparent);
@@ -37,8 +35,7 @@
     .corner-br { bottom: 28px; right: 28px; border-bottom-width: 2px; border-right-width: 2px; }
     .viewfinder-active .corner { border-color: #63caff; box-shadow: 0 0 15px rgba(99, 202, 255, 0.5); }
 
-    /* Scene Container MUST be transparent */
-    #scene-container { position: fixed; inset: 0; z-index: 1; pointer-events: none; }
+    #scene-container { position: fixed; inset: 0; z-index: 1; }
     a-scene { width: 100% !important; height: 100% !important; }
 
     #loading-screen { 
@@ -53,11 +50,19 @@
     #instruction-container { position: fixed; bottom: 50px; width: 100%; display: flex; justify-content: center; z-index: 20; transition: opacity 0.3s ease; }
     .instruction-pill { background: rgba(15,15,15,0.65); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.1); padding: 12px 24px; border-radius: 50px; }
 
+    /* The Dedicated Unmute Button */
     #unmute-btn { 
-      position: fixed; top: 20px; left: 50%; transform: translateX(-50%); 
-      z-index: 200; background: #63caff; color: #000; 
-      border-radius: 30px; padding: 12px 24px; display: none; 
+      position: fixed; top: 30px; left: 50%; transform: translateX(-50%); 
+      z-index: 500; background: #63caff; color: #000; 
+      border-radius: 50px; padding: 14px 28px; display: none; 
       cursor: pointer; border: none; font-family: inherit; font-weight: 700;
+      box-shadow: 0 0 20px rgba(99, 202, 255, 0.6);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: translateX(-50%) scale(1); }
+      50% { transform: translateX(-50%) scale(1.05); box-shadow: 0 0 30px rgba(99, 202, 255, 0.8); }
+      100% { transform: translateX(-50%) scale(1); }
     }
   </style>
 </head>
@@ -81,12 +86,11 @@
   <div class="instruction-pill"><span>Point camera at the image</span></div>
 </div>
 
-<button id="unmute-btn">🔊 Tap to Unmute</button>
+<button id="unmute-btn">🔊 Click to Enable Sound</button>
 
 <div id="scene-container"></div>
 
 <script>
-// --- CHROMA KEY COMPONENT ---
 AFRAME.registerComponent('chromakey-video', {
   schema: {
     src: { type: 'selector' },
@@ -169,7 +173,6 @@ function buildScene(project) {
     }
   });
 
-  // MIND-AR SCENE
   document.getElementById("scene-container").innerHTML = `
     <a-scene mindar-image="imageTargetSrc: ${project.mindFileUrl}; uiScanning: no; uiLoading: no;" vr-mode-ui="enabled: false" renderer="colorManagement: true; alpha: true;">
       <a-assets timeout="10000">${assetsHTML}</a-assets>
@@ -178,13 +181,8 @@ function buildScene(project) {
     </a-scene>`;
 
   const scene = document.querySelector("a-scene");
-  
-  // Listen for the camera-ready event
   scene.addEventListener("renderstart", () => {
-    // Hide loading screen only when rendering has actually started
-    setTimeout(() => {
-      document.getElementById("loading-screen").style.display = "none";
-    }, 500);
+    setTimeout(() => { document.getElementById("loading-screen").style.display = "none"; }, 500);
   });
 
   const arTarget = document.getElementById("ar-target");
@@ -204,7 +202,10 @@ function buildScene(project) {
       if (layer.type === "video") {
         const v = document.getElementById(`layer-${i}-src`);
         v.muted = !audioUnlocked;
-        v.play().catch(() => { if(!audioUnlocked) unmuteBtn.style.display = "block"; });
+        v.play().catch(() => {
+          // Only show the button if audio hasn't been enabled yet
+          if(!audioUnlocked) unmuteBtn.style.display = "block";
+        });
       }
     });
   });
@@ -213,7 +214,7 @@ function buildScene(project) {
     scanLine.style.display = "block";
     viewfinder.classList.remove("viewfinder-active");
     document.getElementById("instruction-container").style.opacity = "1";
-    unmuteBtn.style.display = "none";
+    // We don't hide the button here in case they lost the target before clicking it
     project.layers.forEach((layer, i) => {
       const el = document.getElementById(`layer-${i}`);
       if (el) el.setAttribute("visible", false);
@@ -223,17 +224,18 @@ function buildScene(project) {
       }
     });
   });
-}
 
-// Global click to enable audio
-document.addEventListener("click", () => {
-  audioUnlocked = true;
-  document.querySelectorAll('video').forEach(v => {
-    v.muted = false;
-    v.play().catch(() => {}); 
+  // THE FIX: Unmute only happens on button click
+  unmuteBtn.addEventListener("click", (e) => {
+    e.stopPropagation(); // Stop from bubbling
+    audioUnlocked = true;
+    document.querySelectorAll('video').forEach(v => {
+      v.muted = false;
+      v.play().catch(() => {}); 
+    });
+    unmuteBtn.style.display = "none"; // Vanish after click
   });
-  document.getElementById("unmute-btn").style.display = "none";
-});
+}
 
 init();
 </script>
