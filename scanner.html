@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <title>Feel AR — Scanner</title>
+  <title>Feel AR — Scanner & Recorder</title>
 
   <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
@@ -19,6 +19,7 @@
       font-family: 'Outfit', sans-serif; color: white; 
     }
 
+    /* Scanning line */
     #scan-line {
       position: fixed; top: 0; left: 0; width: 100%; height: 4px;
       background: linear-gradient(to bottom, transparent, #63caff, transparent);
@@ -35,51 +36,49 @@
     .corner-br { bottom: 28px; right: 28px; border-bottom-width: 2px; border-right-width: 2px; }
     .viewfinder-active .corner { border-color: #63caff; box-shadow: 0 0 15px rgba(99, 202, 255, 0.5); }
 
-    #scene-container { position: fixed; inset: 0; z-index: 1; }
-    a-scene { width: 100% !important; height: 100% !important; }
-
     #loading-screen { 
       position: fixed; inset: 0; background: #07070e; 
       display: flex; flex-direction: column; align-items: center; 
-      justify-content: center; gap: 18px; z-index: 100; 
+      justify-content: center; gap: 18px; z-index: 1000; 
     }
     .logo { font-size: 24px; font-weight: 700; color: #63caff; }
     .spinner { width: 48px; height: 48px; border: 3px solid rgba(99,202,255,0.15); border-top-color: #63caff; border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    #instruction-container { position: fixed; bottom: 50px; width: 100%; display: flex; justify-content: center; z-index: 20; transition: opacity 0.3s ease; }
+    #instruction-container { position: fixed; bottom: 100px; width: 100%; display: flex; justify-content: center; z-index: 20; transition: opacity 0.3s ease; }
     .instruction-pill { background: rgba(15,15,15,0.65); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.1); padding: 12px 24px; border-radius: 50px; }
 
-    /* UNMUTE BUTTON STYLE */
+    /* UNMUTE BUTTON */
     #unmute-btn { 
       position: fixed; top: 40px; left: 50%; transform: translateX(-50%); 
       z-index: 500; background: #63caff; color: #000; 
-      border-radius: 50px; padding: 14px 28px; display: block; /* Visible by default */
+      border-radius: 50px; padding: 14px 28px; display: block; 
       cursor: pointer; border: none; font-family: inherit; font-weight: 700;
       box-shadow: 0 0 20px rgba(99, 202, 255, 0.6);
-      animation: pulse 2s infinite;
     }
-    @keyframes pulse {
-      0% { transform: translateX(-50%) scale(1); }
-      50% { transform: translateX(-50%) scale(1.05); }
-      100% { transform: translateX(-50%) scale(1); }
+
+    /* RECORD BUTTON */
+    #record-btn {
+      position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+      z-index: 500; background: #ff4b2b; color: white;
+      border-radius: 50px; padding: 14px 28px; cursor: pointer; border: none;
+      font-family: inherit; font-weight: 700; box-shadow: 0 4px 15px rgba(0,0,0,0.4);
     }
+    #record-btn.recording { background: #000; border: 2px solid #ff4b2b; animation: pulse-red 1.5s infinite; }
+    @keyframes pulse-red { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
   </style>
 </head>
 <body>
 
 <div id="scan-line"></div>
-
 <div id="loading-screen">
   <div class="logo">◈ Feel AR</div>
   <div class="spinner"></div>
 </div>
 
 <div id="viewfinder-layer">
-  <div class="corner corner-tl"></div>
-  <div class="corner corner-tr"></div>
-  <div class="corner corner-bl"></div>
-  <div class="corner corner-br"></div>
+  <div class="corner corner-tl"></div><div class="corner corner-tr"></div>
+  <div class="corner corner-bl"></div><div class="corner corner-br"></div>
 </div>
 
 <div id="instruction-container">
@@ -87,11 +86,12 @@
 </div>
 
 <button id="unmute-btn">🔊 Click to Enable Sound</button>
+<button id="record-btn">⏺ Start Recording</button>
 
 <div id="scene-container"></div>
 
 <script>
-// Chroma Key component remains the same
+// --- CHROMA KEY COMPONENT ---
 AFRAME.registerComponent('chromakey-video', {
   schema: {
     src: { type: 'selector' },
@@ -140,6 +140,8 @@ const rawUrl = (path) => `https://raw.githubusercontent.com/${GITHUB_USER}/${GIT
 const projectId = new URLSearchParams(window.location.search).get("project");
 
 let audioUnlocked = false;
+let mediaRecorder;
+let recordedChunks = [];
 
 async function init() {
   if (!projectId) return;
@@ -147,6 +149,7 @@ async function init() {
     const res = await fetch(rawUrl(`projects/${projectId}.json`));
     const project = await res.json();
     buildScene(project);
+    setupRecorder();
   } catch(e) { console.error(e); }
 }
 
@@ -169,13 +172,11 @@ function buildScene(project) {
     } else if (layer.type === "image") {
       assetsHTML += `<img id="${id}-src" src="${layer.url}" crossorigin="anonymous" />`;
       entitiesHTML += `<a-image id="${id}" src="#${id}-src" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.01" rotation="0 0 ${rotZ}" material="shader: flat; transparent: true; opacity: ${layer.opacity || 1}" visible="false"></a-image>`;
-    } else if (layer.type === "text") {
-      entitiesHTML += `<a-entity id="${id}" text="value: ${layer.content}; align: center; width: ${scaleW * 2}; color: white; opacity: ${layer.opacity || 1}" position="${posX} ${posY} 0.02" rotation="0 0 ${rotZ}" visible="false"></a-entity>`;
     }
   });
 
   document.getElementById("scene-container").innerHTML = `
-    <a-scene mindar-image="imageTargetSrc: ${project.mindFileUrl}; uiScanning: no; uiLoading: no;" vr-mode-ui="enabled: false" renderer="colorManagement: true; alpha: true;">
+    <a-scene mindar-image="imageTargetSrc: ${project.mindFileUrl}; uiScanning: no; uiLoading: no;" vr-mode-ui="enabled: false" renderer="colorManagement: true; alpha: true; preserveDrawingBuffer: true;">
       <a-assets timeout="10000">${assetsHTML}</a-assets>
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
       <a-entity mindar-image-target="targetIndex: 0" id="ar-target">${entitiesHTML}</a-entity>
@@ -187,32 +188,25 @@ function buildScene(project) {
   });
 
   const arTarget = document.getElementById("ar-target");
-  const unmuteBtn = document.getElementById("unmute-btn");
-  const scanLine = document.getElementById("scan-line");
-  const viewfinder = document.getElementById("viewfinder-layer");
-
   arTarget.addEventListener("targetFound", () => {
-    scanLine.style.display = "none";
-    viewfinder.classList.add("viewfinder-active");
+    document.getElementById("scan-line").style.display = "none";
+    document.getElementById("viewfinder-layer").classList.add("viewfinder-active");
     document.getElementById("instruction-container").style.opacity = "0";
     
     project.layers.forEach((layer, i) => {
       const el = document.getElementById(`layer-${i}`);
-      if (!el) return;
-      el.setAttribute("visible", true);
+      if (el) el.setAttribute("visible", true);
       if (layer.type === "video") {
         const v = document.getElementById(`layer-${i}-src`);
         v.muted = !audioUnlocked;
-        v.play().catch(() => {
-          // Button is already showing or will show if blocked
-        });
+        v.play().catch(() => {});
       }
     });
   });
 
   arTarget.addEventListener("targetLost", () => {
-    scanLine.style.display = "block";
-    viewfinder.classList.remove("viewfinder-active");
+    document.getElementById("scan-line").style.display = "block";
+    document.getElementById("viewfinder-layer").classList.remove("viewfinder-active");
     document.getElementById("instruction-container").style.opacity = "1";
     project.layers.forEach((layer, i) => {
       const el = document.getElementById(`layer-${i}`);
@@ -224,17 +218,44 @@ function buildScene(project) {
     });
   });
 
-  // THE STRICT FIX: Logic removed from general click, now ONLY on this button.
-  unmuteBtn.addEventListener("click", () => {
+  document.getElementById("unmute-btn").addEventListener("click", function() {
     audioUnlocked = true;
-    const videos = document.querySelectorAll('video');
-    videos.forEach(v => {
-      v.muted = false;
-      v.play().catch(() => {}); 
-    });
-    unmuteBtn.style.removeProperty('display'); // Ensure it's not fighting hidden states
-    unmuteBtn.style.display = "none"; // Hide forever after use
+    document.querySelectorAll('video').forEach(v => { v.muted = false; v.play().catch(()=>{}); });
+    this.style.display = "none";
   });
+}
+
+// --- RECORDER LOGIC ---
+function setupRecorder() {
+  const recordBtn = document.getElementById("record-btn");
+  recordBtn.addEventListener("click", () => {
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+      mediaRecorder.stop();
+      recordBtn.textContent = "⏺ Start Recording";
+      recordBtn.classList.remove("recording");
+    } else {
+      startRecording();
+      recordBtn.textContent = "Stop & Save";
+      recordBtn.classList.add("recording");
+    }
+  });
+}
+
+function startRecording() {
+  const canvas = document.querySelector("canvas");
+  const stream = canvas.captureStream(30);
+  recordedChunks = [];
+  mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
+  mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+  mediaRecorder.onstop = () => {
+    const blob = new Blob(recordedChunks, { type: "video/webm" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `FeelAR_${Date.now()}.webm`;
+    a.click();
+  };
+  mediaRecorder.start();
 }
 
 init();
