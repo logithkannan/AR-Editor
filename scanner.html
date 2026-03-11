@@ -14,17 +14,15 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Outfit', sans-serif; color: white; }
 
-    /* The scanning line effect */
+    /* Scanner UI Overlay */
     #scan-line {
       position: fixed; top: 0; left: 0; width: 100%; height: 4px;
       background: linear-gradient(to bottom, transparent, #63caff, transparent);
       box-shadow: 0 0 15px #63caff; z-index: 15;
       animation: scan 3s ease-in-out infinite; opacity: 0.6;
-      display: block; /* Ensure it's visible initially */
     }
     @keyframes scan { 0% { top: 15%; } 50% { top: 85%; } 100% { top: 15%; } }
 
-    /* Viewfinder corners */
     #viewfinder-layer { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
     .corner { position: absolute; width: 36px; height: 36px; border-color: rgba(255,255,255,0.3); border-style: solid; border-width: 0; transition: all 0.3s ease; }
     .corner-tl { top: 28px; left: 28px; border-top-width: 2px; border-left-width: 2px; }
@@ -32,9 +30,6 @@
     .corner-bl { bottom: 28px; left: 28px; border-bottom-width: 2px; border-left-width: 2px; }
     .corner-br { bottom: 28px; right: 28px; border-bottom-width: 2px; border-right-width: 2px; }
     .viewfinder-active .corner { border-color: #63caff; box-shadow: 0 0 15px rgba(99, 202, 255, 0.5); }
-
-    #scene-container { position: fixed; inset: 0; z-index: 2; }
-    a-scene { width: 100vw !important; height: 100vh !important; }
 
     #loading-screen { position: fixed; inset: 0; background: #07070e; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; z-index: 100; }
     .logo { font-size: 24px; font-weight: 700; color: #63caff; }
@@ -44,7 +39,7 @@
     #instruction-container { position: fixed; bottom: 50px; width: 100%; display: flex; justify-content: center; z-index: 20; transition: opacity 0.3s ease; }
     .instruction-pill { background: rgba(15,15,15,0.65); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.1); padding: 12px 24px; border-radius: 50px; }
 
-    #unmute-btn { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 20; background: rgba(0,0,0,0.75); color: #fff; border-radius: 30px; padding: 10px 22px; display: none; cursor: pointer; border: none; font-family: inherit; }
+    #unmute-btn { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 20; background: rgba(0,0,0,0.85); color: #fff; border-radius: 30px; padding: 12px 24px; display: none; cursor: pointer; border: 1px solid #63caff; font-family: inherit; font-weight: 500; }
   </style>
 </head>
 <body>
@@ -67,7 +62,8 @@
   <div class="instruction-pill"><span>Point camera at the image</span></div>
 </div>
 
-<button id="unmute-btn">🔊 Tap to Unmute</button>
+<button id="unmute-btn">🔊 Tap to Unmute Audio</button>
+
 <div id="scene-container"></div>
 
 <script>
@@ -76,7 +72,7 @@ AFRAME.registerComponent('chromakey-video', {
   schema: {
     src: { type: 'selector' },
     color: { type: 'color', default: '#00FF00' },
-    threshold: { type: 'number', default: 0.15 }
+    threshold: { type: 'number', default: 0.25 }
   },
   init: function () {
     const video = this.data.src;
@@ -145,11 +141,11 @@ async function init() {
     const res = await fetch(rawUrl(`projects/${projectId}.json`));
     const project = await res.json();
     buildScene(project);
-  } catch(e) { console.error(e); }
+  } catch(e) { console.error("Project load error:", e); }
 }
 
 function buildScene(project) {
-  const W = 500, H = 360;
+  const W = 500, H = 360; // Workspace dimensions
   let assetsHTML = "";
   let entitiesHTML = "";
 
@@ -160,31 +156,41 @@ function buildScene(project) {
     const posX = (((layer.x + layer.width / 2) - W / 2) / W).toFixed(3);
     const posY = (-((layer.y + layer.height / 2) - H / 2) / H).toFixed(3);
     const rotZ = (-(layer.rotation || 0)).toFixed(1);
+    const opacity = layer.opacity !== undefined ? layer.opacity : 1;
 
     if (layer.type === "video") {
       assetsHTML += `<video id="${id}-src" src="${layer.url}" loop="true" muted="true" playsinline crossorigin="anonymous" webkit-playsinline preload="auto"></video>`;
-      // Use standard chroma key logic from your previous working version
-      entitiesHTML += `<a-plane id="${id}" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.01" rotation="0 0 ${rotZ}" chromakey-video="src: #${id}-src; threshold: 0.25" visible="false"></a-plane>`;
+      
+      // Check if project uses specific chromakey settings from editor
+      const isChroma = layer.isGreenScreen !== undefined ? layer.isGreenScreen : true;
+      const threshold = layer.chromaThreshold || 0.25;
+
+      if (isChroma) {
+        entitiesHTML += `<a-plane id="${id}" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.01" rotation="0 0 ${rotZ}" chromakey-video="src: #${id}-src; threshold: ${threshold}" visible="false"></a-plane>`;
+      } else {
+        entitiesHTML += `<a-video id="${id}" src="#${id}-src" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.01" rotation="0 0 ${rotZ}" material="transparent: true; opacity: ${opacity}" visible="false"></a-video>`;
+      }
+
     } else if (layer.type === "image") {
       assetsHTML += `<img id="${id}-src" src="${layer.url}" crossorigin="anonymous" />`;
-      entitiesHTML += `<a-image id="${id}" src="#${id}-src" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.01" rotation="0 0 ${rotZ}" material="shader: flat; transparent: true; opacity: ${layer.opacity || 1}" visible="false"></a-image>`;
+      entitiesHTML += `<a-image id="${id}" src="#${id}-src" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.01" rotation="0 0 ${rotZ}" material="shader: flat; transparent: true; opacity: ${opacity}" visible="false"></a-image>`;
+    
     } else if (layer.type === "text") {
-      entitiesHTML += `<a-entity id="${id}" text="value: ${layer.content}; align: center; width: ${scaleW * 2}; color: white; opacity: ${layer.opacity || 1}" position="${posX} ${posY} 0.02" rotation="0 0 ${rotZ}" visible="false"></a-entity>`;
+      entitiesHTML += `<a-entity id="${id}" text="value: ${layer.content}; align: center; width: ${scaleW * 2}; color: white; opacity: ${opacity}" position="${posX} ${posY} 0.02" rotation="0 0 ${rotZ}" visible="false"></a-entity>`;
     }
   });
 
-  // MIND-AR INITIALIZATION (uiScanning: no hides the default MindAR UI so our custom UI shows)
   document.getElementById("scene-container").innerHTML = `
     <a-scene mindar-image="imageTargetSrc: ${project.mindFileUrl}; uiScanning: no; uiLoading: no;" vr-mode-ui="enabled: false" renderer="colorManagement: true; alpha: true;">
       <a-assets timeout="10000">${assetsHTML}</a-assets>
-      <a-camera position="0 0 0" look-controls="enabled: false" cursor="fuse: false; rayOrigin: mouse;" raycaster="far: 10000; objects: .clickable"></a-camera>
+      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
       <a-entity mindar-image-target="targetIndex: 0" id="ar-target">${entitiesHTML}</a-entity>
     </a-scene>`;
 
   const scene = document.querySelector("a-scene");
+  
   scene.addEventListener("loaded", () => {
     document.getElementById("loading-screen").style.display = "none";
-    
     const arTarget = document.getElementById("ar-target");
     const unmute = document.getElementById("unmute-btn");
     const scanLine = document.getElementById("scan-line");
@@ -202,7 +208,10 @@ function buildScene(project) {
         if (layer.type === "video") {
           const v = document.getElementById(`layer-${i}-src`);
           v.muted = !audioUnlocked;
-          v.play().catch(() => { if(!audioUnlocked) unmute.style.display = "block"; });
+          v.volume = 1.0;
+          v.play().catch(() => { 
+            if(!audioUnlocked) unmute.style.display = "block"; 
+          });
         }
       });
     });
@@ -212,25 +221,31 @@ function buildScene(project) {
       viewfinder.classList.remove("viewfinder-active");
       document.getElementById("instruction-container").style.opacity = "1";
       unmute.style.display = "none";
+      
       project.layers.forEach((layer, i) => {
         const el = document.getElementById(`layer-${i}`);
         if (el) el.setAttribute("visible", false);
         if (layer.type === "video") {
           const v = document.getElementById(`layer-${i}-src`);
-          if (v) { v.pause(); v.currentTime = 0; }
+          if (v) { v.pause(); }
         }
       });
     });
   });
 }
 
-// Global click to enable audio
+// Global click handler to unlock audio engine for browsers
 document.addEventListener("click", () => {
+  if (audioUnlocked) return;
   audioUnlocked = true;
-  document.querySelectorAll('video').forEach(v => {
+  
+  const allVideos = document.querySelectorAll('video');
+  allVideos.forEach(v => {
     v.muted = false;
+    v.volume = 1.0;
     v.play().catch(() => {}); 
   });
+  
   document.getElementById("unmute-btn").style.display = "none";
 });
 
