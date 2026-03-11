@@ -15,11 +15,10 @@
     
     html, body { 
       width: 100%; height: 100%; overflow: hidden; 
-      background: transparent !important; 
+      background: transparent !important; /* Critical for camera visibility */
       font-family: 'Outfit', sans-serif; color: white; 
     }
 
-    /* Scanning line */
     #scan-line {
       position: fixed; top: 0; left: 0; width: 100%; height: 4px;
       background: linear-gradient(to bottom, transparent, #63caff, transparent);
@@ -41,40 +40,30 @@
       display: flex; flex-direction: column; align-items: center; 
       justify-content: center; gap: 18px; z-index: 1000; 
     }
-    .logo { font-size: 24px; font-weight: 700; color: #63caff; }
     .spinner { width: 48px; height: 48px; border: 3px solid rgba(99,202,255,0.15); border-top-color: #63caff; border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    #instruction-container { position: fixed; bottom: 100px; width: 100%; display: flex; justify-content: center; z-index: 20; transition: opacity 0.3s ease; }
+    #instruction-container { position: fixed; bottom: 120px; width: 100%; display: flex; justify-content: center; z-index: 20; transition: opacity 0.3s ease; }
     .instruction-pill { background: rgba(15,15,15,0.65); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.1); padding: 12px 24px; border-radius: 50px; }
 
-    /* UNMUTE BUTTON */
-    #unmute-btn { 
-      position: fixed; top: 40px; left: 50%; transform: translateX(-50%); 
-      z-index: 500; background: #63caff; color: #000; 
-      border-radius: 50px; padding: 14px 28px; display: block; 
-      cursor: pointer; border: none; font-family: inherit; font-weight: 700;
-      box-shadow: 0 0 20px rgba(99, 202, 255, 0.6);
+    /* UI BUTTONS */
+    .ar-ui-btn {
+      position: fixed; z-index: 500; font-family: inherit; font-weight: 700;
+      border-radius: 50px; border: none; cursor: pointer; padding: 14px 28px;
     }
-
-    /* RECORD BUTTON */
-    #record-btn {
-      position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
-      z-index: 500; background: #ff4b2b; color: white;
-      border-radius: 50px; padding: 14px 28px; cursor: pointer; border: none;
-      font-family: inherit; font-weight: 700; box-shadow: 0 4px 15px rgba(0,0,0,0.4);
-    }
+    #unmute-btn { top: 40px; left: 50%; transform: translateX(-50%); background: #63caff; color: #000; display: block; box-shadow: 0 0 20px rgba(99, 202, 255, 0.6); }
+    #record-btn { bottom: 40px; left: 50%; transform: translateX(-50%); background: #ff4b2b; color: white; box-shadow: 0 4px 15px rgba(0,0,0,0.4); }
     #record-btn.recording { background: #000; border: 2px solid #ff4b2b; animation: pulse-red 1.5s infinite; }
     @keyframes pulse-red { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+
+    #scene-container { position: fixed; inset: 0; z-index: 1; pointer-events: none; }
+    a-scene { width: 100% !important; height: 100% !important; }
   </style>
 </head>
 <body>
 
 <div id="scan-line"></div>
-<div id="loading-screen">
-  <div class="logo">◈ Feel AR</div>
-  <div class="spinner"></div>
-</div>
+<div id="loading-screen"><div class="spinner"></div></div>
 
 <div id="viewfinder-layer">
   <div class="corner corner-tl"></div><div class="corner corner-tr"></div>
@@ -85,30 +74,22 @@
   <div class="instruction-pill"><span>Point camera at the image</span></div>
 </div>
 
-<button id="unmute-btn">🔊 Click to Enable Sound</button>
-<button id="record-btn">⏺ Start Recording</button>
+<button id="unmute-btn" class="ar-ui-btn">🔊 Click to Enable Sound</button>
+<button id="record-btn" class="ar-ui-btn">⏺ Start Recording</button>
 
 <div id="scene-container"></div>
 
 <script>
 // --- CHROMA KEY COMPONENT ---
 AFRAME.registerComponent('chromakey-video', {
-  schema: {
-    src: { type: 'selector' },
-    color: { type: 'color', default: '#00FF00' },
-    threshold: { type: 'number', default: 0.25 }
-  },
+  schema: { src: { type: 'selector' }, color: { type: 'color', default: '#00FF00' }, threshold: { type: 'number', default: 0.25 } },
   init: function () {
     const video = this.data.src;
     const videoTexture = new THREE.VideoTexture(video);
     videoTexture.format = THREE.RGBAFormat;
     const keyColor = new THREE.Color(this.data.color);
     this.material = new THREE.ShaderMaterial({
-      uniforms: {
-        tex: { value: videoTexture },
-        keyColor: { value: new THREE.Vector3(keyColor.r, keyColor.g, keyColor.b) },
-        threshold: { value: this.data.threshold }
-      },
+      uniforms: { tex: { value: videoTexture }, keyColor: { value: new THREE.Vector3(keyColor.r, keyColor.g, keyColor.b) }, threshold: { value: this.data.threshold } },
       vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: `
         uniform sampler2D tex; uniform vec3 keyColor; uniform float threshold; varying vec2 vUv;
@@ -176,7 +157,7 @@ function buildScene(project) {
   });
 
   document.getElementById("scene-container").innerHTML = `
-    <a-scene mindar-image="imageTargetSrc: ${project.mindFileUrl}; uiScanning: no; uiLoading: no;" vr-mode-ui="enabled: false" renderer="colorManagement: true; alpha: true; preserveDrawingBuffer: true;">
+    <a-scene mindar-image="imageTargetSrc: ${project.mindFileUrl}; uiScanning: no; uiLoading: no;" vr-mode-ui="enabled: false" renderer="colorManagement: true; preserveDrawingBuffer: true;">
       <a-assets timeout="10000">${assetsHTML}</a-assets>
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
       <a-entity mindar-image-target="targetIndex: 0" id="ar-target">${entitiesHTML}</a-entity>
@@ -192,7 +173,6 @@ function buildScene(project) {
     document.getElementById("scan-line").style.display = "none";
     document.getElementById("viewfinder-layer").classList.add("viewfinder-active");
     document.getElementById("instruction-container").style.opacity = "0";
-    
     project.layers.forEach((layer, i) => {
       const el = document.getElementById(`layer-${i}`);
       if (el) el.setAttribute("visible", true);
@@ -225,7 +205,7 @@ function buildScene(project) {
   });
 }
 
-// --- RECORDER LOGIC ---
+// --- RECORDER LOGIC (FIXED) ---
 function setupRecorder() {
   const recordBtn = document.getElementById("record-btn");
   recordBtn.addEventListener("click", () => {
@@ -243,9 +223,13 @@ function setupRecorder() {
 
 function startRecording() {
   const canvas = document.querySelector("canvas");
+  // Ensure we are getting the combined stream
   const stream = canvas.captureStream(30);
+  
   recordedChunks = [];
-  mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
+  const options = { mimeType: 'video/webm; codecs=vp9' };
+  
+  mediaRecorder = new MediaRecorder(stream, options);
   mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
   mediaRecorder.onstop = () => {
     const blob = new Blob(recordedChunks, { type: "video/webm" });
@@ -253,7 +237,9 @@ function startRecording() {
     const a = document.createElement("a");
     a.href = url;
     a.download = `FeelAR_${Date.now()}.webm`;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
   };
   mediaRecorder.start();
 }
