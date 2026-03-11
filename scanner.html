@@ -16,7 +16,6 @@
 
     #camera-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
 
-    /* Scanning Line Effect */
     #scan-line {
       position: fixed; top: 0; left: 0; width: 100%; height: 4px;
       background: linear-gradient(to bottom, transparent, #63caff, transparent);
@@ -25,14 +24,12 @@
     }
     @keyframes scan { 0% { top: 15%; } 50% { top: 85%; } 100% { top: 15%; } }
 
-    /* Viewfinder Corners */
     #viewfinder-layer { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
     .corner { position: absolute; width: 36px; height: 36px; border-color: rgba(255,255,255,0.3); border-style: solid; border-width: 0; transition: all 0.3s ease; }
     .corner-tl { top: 28px; left: 28px; border-top-width: 2px; border-left-width: 2px; }
     .corner-tr { top: 28px; right: 28px; border-top-width: 2px; border-right-width: 2px; }
     .corner-bl { bottom: 28px; left: 28px; border-bottom-width: 2px; border-left-width: 2px; }
     .corner-br { bottom: 28px; right: 28px; border-bottom-width: 2px; border-right-width: 2px; }
-
     .viewfinder-active .corner { border-color: #63caff; box-shadow: 0 0 15px rgba(99, 202, 255, 0.5); }
 
     #scene-container { position: fixed; inset: 0; z-index: 2; }
@@ -41,7 +38,6 @@
     #loading-screen { position: fixed; inset: 0; background: #07070e; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; z-index: 100; }
     .logo { font-size: 24px; font-weight: 700; color: #63caff; }
     .spinner { width: 48px; height: 48px; border: 3px solid rgba(99,202,255,0.15); border-top-color: #63caff; border-radius: 50%; animation: spin 0.8s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
 
     #instruction-container { position: fixed; bottom: 50px; width: 100%; display: flex; justify-content: center; z-index: 20; transition: opacity 0.3s ease; }
     .instruction-pill { background: rgba(15,15,15,0.65); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.1); padding: 12px 24px; border-radius: 50px; }
@@ -74,6 +70,53 @@
 <div id="scene-container"></div>
 
 <script>
+// --- CHROMA KEY SHADER REGISTRATION ---
+AFRAME.registerShader('chromakey', {
+  schema: {
+    src: {type: 'map'},
+    color: {type: 'color', default: '0 1 0'}, // Target green
+    threshold: {type: 'number', default: 0.3} // Sensitivity
+  },
+  init: function(data) {
+    this.textureLoader = new THREE.TextureLoader();
+    this.material = new THREE.ShaderMaterial({
+      uniforms: {
+        tex: {value: data.src},
+        keyColor: {value: new THREE.Color(data.color)},
+        threshold: {value: data.threshold}
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D tex;
+        uniform vec3 keyColor;
+        uniform float threshold;
+        varying vec2 vUv;
+        void main() {
+          vec4 fColor = texture2D(tex, vUv);
+          float d = distance(fColor.rgb, keyColor);
+          if (d < threshold) {
+            discard;
+          } else {
+            gl_FragColor = fColor;
+          }
+        }
+      `,
+      transparent: true
+    });
+  },
+  update: function(data) {
+    this.material.uniforms.tex.value = data.src;
+    this.material.uniforms.keyColor.value = new THREE.Color(data.color);
+    this.material.uniforms.threshold.value = data.threshold;
+  }
+});
+
 const GITHUB_USER = "logithkannan";
 const GITHUB_REPO = "feel-ar-data";
 const rawUrl = (path) => `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/${path}?t=${Date.now()}`;
@@ -105,7 +148,8 @@ function buildScene(project) {
 
     if (layer.type === "video") {
       assetsHTML += `<video id="${id}-src" src="${layer.url}" loop="true" muted="true" playsinline crossorigin="anonymous"></video>`;
-      entitiesHTML += `<a-video id="${id}" src="#${id}-src" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.01" rotation="0 0 ${rotZ}" material="shader: flat; transparent: true; opacity: ${layer.opacity || 1}" visible="false"></a-video>`;
+      // CHANGED: Using 'chromakey' shader instead of 'flat'
+      entitiesHTML += `<a-video id="${id}" src="#${id}-src" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.01" rotation="0 0 ${rotZ}" material="shader: chromakey; src: #${id}-src; color: 0 1 0; threshold: 0.3; transparent: true; opacity: ${layer.opacity || 1}" visible="false"></a-video>`;
     } else if (layer.type === "image") {
       assetsHTML += `<img id="${id}-src" src="${layer.url}" crossorigin="anonymous" />`;
       entitiesHTML += `<a-image id="${id}" src="#${id}-src" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.01" rotation="0 0 ${rotZ}" material="shader: flat; transparent: true; opacity: ${layer.opacity || 1}" visible="false"></a-image>`;
@@ -128,8 +172,8 @@ function buildScene(project) {
     const viewfinder = document.getElementById("viewfinder-layer");
 
     arTarget.addEventListener("targetFound", () => {
-      scanLine.style.display = "none"; // Hide scanning line
-      viewfinder.classList.add("viewfinder-active"); // Glow corners
+      scanLine.style.display = "none";
+      viewfinder.classList.add("viewfinder-active");
       document.getElementById("instruction-container").style.opacity = "0";
       
       project.layers.forEach((layer, i) => {
@@ -148,8 +192,8 @@ function buildScene(project) {
     });
 
     arTarget.addEventListener("targetLost", () => {
-      scanLine.style.display = "block"; // Bring back scanning line
-      viewfinder.classList.remove("viewfinder-active"); // Remove glow
+      scanLine.style.display = "block";
+      viewfinder.classList.remove("viewfinder-active");
       document.getElementById("instruction-container").style.opacity = "1";
       unmute.style.display = "none";
       project.layers.forEach((layer, i) => {
