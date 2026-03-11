@@ -50,18 +50,18 @@
     #instruction-container { position: fixed; bottom: 50px; width: 100%; display: flex; justify-content: center; z-index: 20; transition: opacity 0.3s ease; }
     .instruction-pill { background: rgba(15,15,15,0.65); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.1); padding: 12px 24px; border-radius: 50px; }
 
-    /* The Dedicated Unmute Button */
+    /* UNMUTE BUTTON STYLE */
     #unmute-btn { 
-      position: fixed; top: 30px; left: 50%; transform: translateX(-50%); 
+      position: fixed; top: 40px; left: 50%; transform: translateX(-50%); 
       z-index: 500; background: #63caff; color: #000; 
-      border-radius: 50px; padding: 14px 28px; display: none; 
+      border-radius: 50px; padding: 14px 28px; display: block; /* Visible by default */
       cursor: pointer; border: none; font-family: inherit; font-weight: 700;
       box-shadow: 0 0 20px rgba(99, 202, 255, 0.6);
       animation: pulse 2s infinite;
     }
     @keyframes pulse {
       0% { transform: translateX(-50%) scale(1); }
-      50% { transform: translateX(-50%) scale(1.05); box-shadow: 0 0 30px rgba(99, 202, 255, 0.8); }
+      50% { transform: translateX(-50%) scale(1.05); }
       100% { transform: translateX(-50%) scale(1); }
     }
   </style>
@@ -91,6 +91,7 @@
 <div id="scene-container"></div>
 
 <script>
+// Chroma Key component remains the same
 AFRAME.registerComponent('chromakey-video', {
   schema: {
     src: { type: 'selector' },
@@ -203,8 +204,7 @@ function buildScene(project) {
         const v = document.getElementById(`layer-${i}-src`);
         v.muted = !audioUnlocked;
         v.play().catch(() => {
-          // Only show the button if audio hasn't been enabled yet
-          if(!audioUnlocked) unmuteBtn.style.display = "block";
+          // Button is already showing or will show if blocked
         });
       }
     });
@@ -214,7 +214,6 @@ function buildScene(project) {
     scanLine.style.display = "block";
     viewfinder.classList.remove("viewfinder-active");
     document.getElementById("instruction-container").style.opacity = "1";
-    // We don't hide the button here in case they lost the target before clicking it
     project.layers.forEach((layer, i) => {
       const el = document.getElementById(`layer-${i}`);
       if (el) el.setAttribute("visible", false);
@@ -225,15 +224,16 @@ function buildScene(project) {
     });
   });
 
-  // THE FIX: Unmute only happens on button click
-  unmuteBtn.addEventListener("click", (e) => {
-    e.stopPropagation(); // Stop from bubbling
+  // THE STRICT FIX: Logic removed from general click, now ONLY on this button.
+  unmuteBtn.addEventListener("click", () => {
     audioUnlocked = true;
-    document.querySelectorAll('video').forEach(v => {
+    const videos = document.querySelectorAll('video');
+    videos.forEach(v => {
       v.muted = false;
       v.play().catch(() => {}); 
     });
-    unmuteBtn.style.display = "none"; // Vanish after click
+    unmuteBtn.style.removeProperty('display'); // Ensure it's not fighting hidden states
+    unmuteBtn.style.display = "none"; // Hide forever after use
   });
 }
 
