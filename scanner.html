@@ -64,6 +64,7 @@
     }
     .instruction-text { font-weight: 500; font-size: 1rem; }
 
+    /* Active target indicator — shows which image was found */
     #target-indicator {
       position: fixed; top: 24px; left: 50%; transform: translateX(-50%);
       z-index: 20; display: none;
@@ -80,19 +81,6 @@
       border-radius: 50px; padding: 14px 28px; display: none;
       cursor: pointer; border: none; font-family: inherit; font-weight: 700;
       box-shadow: 0 0 20px rgba(99,202,255,0.6);
-    }
-
-    /* FULLSCREEN OVERLAY STYLES */
-    #fs-overlay {
-      position: fixed; inset: 0; background: #000; z-index: 9999;
-      display: none; flex-direction: column; align-items: center; justify-content: center;
-    }
-    #fs-video { width: 100%; max-height: 100%; outline: none; }
-    #close-fs {
-      position: absolute; top: 30px; right: 30px; background: rgba(255,255,255,0.15);
-      border: 1px solid rgba(255,255,255,0.3); color: white; border-radius: 50%;
-      width: 44px; height: 44px; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center;
-      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
     }
   </style>
 </head>
@@ -111,11 +99,6 @@
   <div class="err-title">Something went wrong</div>
   <div class="err-msg" id="error-msg">Unknown error</div>
   <button class="retry-btn" onclick="location.reload()">Try Again</button>
-</div>
-
-<div id="fs-overlay">
-  <video id="fs-video" controls playsinline></video>
-  <button id="close-fs">✕</button>
 </div>
 
 <div id="viewfinder-layer">
@@ -148,11 +131,7 @@ const rawUrl = (path) => `https://raw.githubusercontent.com/${GITHUB_USER}/${GIT
 const projectId = new URLSearchParams(window.location.search).get("project");
 
 let audioUnlocked = false;
-let activeTargetCount = 0; 
-
-const fsOverlay = document.getElementById("fs-overlay");
-const fsVideo = document.getElementById("fs-video");
-const closeFs = document.getElementById("close-fs");
+let activeTargetCount = 0; // how many targets currently visible
 
 function setStatus(msg) { document.getElementById("load-status").textContent = msg; }
 function showError(msg) {
@@ -168,26 +147,8 @@ unmuteBtn.addEventListener("click", () => {
   unmuteBtn.style.display = "none";
 });
 
-// Fullscreen Control
-closeFs.onclick = () => {
-  fsVideo.pause();
-  fsOverlay.style.display = "none";
-  document.querySelector("a-scene").play(); // Resume AR
-};
-
-window.openFullscreen = (videoId) => {
-  const arVideo = document.getElementById(videoId);
-  if (!arVideo) return;
-  
-  document.querySelector("a-scene").pause(); // Pause AR for performance
-  fsVideo.src = arVideo.src;
-  fsVideo.currentTime = arVideo.currentTime; // Sync time
-  fsOverlay.style.display = "flex";
-  fsVideo.play();
-};
-
 async function init() {
-  if (!projectId) { showError("No project ID in URL."); return; }
+  if (!projectId) { showError("No project ID in URL. Open this link from the editor."); return; }
   setStatus("Loading project...");
   let project;
   try {
@@ -196,10 +157,17 @@ async function init() {
     project = await res.json();
   } catch(e) { showError(e.message); return; }
 
-  if (!project.mindFileUrl) { showError("No AR target compiled yet."); return; }
+  if (!project.mindFileUrl) { showError("No AR target compiled yet. Save the project in the editor first."); return; }
 
-  const buildFunc = project.type === "multi" ? buildMultiScene : buildSingleScene;
-  buildFunc(project);
+  if (project.type === "multi") {
+    if (!project.targets?.length) { showError("No targets found in this project."); return; }
+    setStatus(`Building multi-target scene (${project.targets.length} targets)...`);
+    buildMultiScene(project);
+  } else {
+    if (!project.layers?.length) { showError("No layers added yet."); return; }
+    setStatus("Building AR scene...");
+    buildSingleScene(project);
+  }
 }
 
 // ── SINGLE TARGET ─────────────────────────────────────────────────────────
@@ -212,15 +180,36 @@ function buildSingleScene(project) {
       vr-mode-ui="enabled: false"
       renderer="colorManagement: true; alpha: true;">
       <a-assets timeout="15000">${assetsHTML}</a-assets>
-      <a-camera position="0 0 0" look-controls="enabled: false">
-        <a-cursor fuse="false" raycaster="objects: .clickable"></a-cursor>
-      </a-camera>
+      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
       <a-entity mindar-image-target="targetIndex: 0" id="ar-target-0">
         ${entitiesHTML}
       </a-entity>
     </a-scene>`;
 
-  setupEvents(project.layers, 0);
+  const scene = document.querySelector("a-scene");
+  scene.addEventListener("renderstart", () => {
+    setTimeout(() => { document.getElementById("loading-screen").style.display = "none"; }, 500);
+  });
+
+  const arTarget = document.getElementById("ar-target-0");
+  const viewfinder = document.getElementById("viewfinder-layer");
+  const scanLine = document.getElementById("scan-line");
+  const instruction = document.getElementById("instruction-container");
+
+  arTarget.addEventListener("targetFound", () => {
+    scanLine.style.display = "none";
+    viewfinder.classList.add("viewfinder-active");
+    instruction.style.opacity = "0";
+    showLayers(project.layers, 0);
+    playVideos(project.layers, 0);
+  });
+  arTarget.addEventListener("targetLost", () => {
+    scanLine.style.display = "block";
+    viewfinder.classList.remove("viewfinder-active");
+    instruction.style.opacity = "1";
+    hideLayers(project.layers, 0);
+    pauseVideos(project.layers, 0);
+  });
 }
 
 // ── MULTI TARGET ──────────────────────────────────────────────────────────
@@ -240,56 +229,54 @@ function buildMultiScene(project) {
       vr-mode-ui="enabled: false"
       renderer="colorManagement: true; alpha: true;">
       <a-assets timeout="15000">${allAssetsHTML}</a-assets>
-      <a-camera position="0 0 0" look-controls="enabled: false">
-        <a-cursor fuse="false" raycaster="objects: .clickable"></a-cursor>
-      </a-camera>
+      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
       ${allEntitiesHTML}
     </a-scene>`;
 
-  project.targets.forEach((target, idx) => {
-    setupEvents(target.layers, idx, target.name);
-  });
-}
-
-function setupEvents(layers, idx, targetName = null) {
   const scene = document.querySelector("a-scene");
-  const arTarget = document.getElementById(`ar-target-${idx}`);
   const viewfinder = document.getElementById("viewfinder-layer");
   const scanLine = document.getElementById("scan-line");
   const instruction = document.getElementById("instruction-container");
   const indicator = document.getElementById("target-indicator");
   const indicatorText = document.getElementById("target-indicator-text");
+  const instrText = document.getElementById("instruction-text");
+
+  // Show how many targets total
+  instrText.textContent = `Point camera at any of ${project.targets.length} images`;
 
   scene.addEventListener("renderstart", () => {
     setTimeout(() => { document.getElementById("loading-screen").style.display = "none"; }, 500);
   });
 
-  arTarget.addEventListener("targetFound", () => {
-    activeTargetCount++;
-    scanLine.style.display = "none";
-    viewfinder.classList.add("viewfinder-active");
-    instruction.style.opacity = "0";
+  project.targets.forEach((target, idx) => {
+    const arTarget = document.getElementById(`ar-target-${idx}`);
 
-    if (targetName) {
-        indicatorText.textContent = targetName;
-        indicator.style.display = "flex";
-    }
+    arTarget.addEventListener("targetFound", () => {
+      activeTargetCount++;
+      scanLine.style.display = "none";
+      viewfinder.classList.add("viewfinder-active");
+      instruction.style.opacity = "0";
 
-    showLayers(layers, idx);
-    playVideos(layers, idx);
-  });
+      // Show which target was found
+      indicatorText.textContent = target.name || `Target ${idx}`;
+      indicator.style.display = "flex";
 
-  arTarget.addEventListener("targetLost", () => {
-    activeTargetCount = Math.max(0, activeTargetCount - 1);
-    hideLayers(layers, idx);
-    pauseVideos(layers, idx);
+      showLayers(target.layers, idx);
+      playVideos(target.layers, idx);
+    });
 
-    if (activeTargetCount === 0) {
-      scanLine.style.display = "block";
-      viewfinder.classList.remove("viewfinder-active");
-      instruction.style.opacity = "1";
-      indicator.style.display = "none";
-    }
+    arTarget.addEventListener("targetLost", () => {
+      activeTargetCount = Math.max(0, activeTargetCount - 1);
+      hideLayers(target.layers, idx);
+      pauseVideos(target.layers, idx);
+
+      if (activeTargetCount === 0) {
+        scanLine.style.display = "block";
+        viewfinder.classList.remove("viewfinder-active");
+        instruction.style.opacity = "1";
+        indicator.style.display = "none";
+      }
+    });
   });
 }
 
@@ -311,10 +298,7 @@ function buildTargetHTML(layers, targetIdx) {
 
     if (layer.type === "video") {
       assetsHTML += `<video id="${id}-src" src="${layer.url}" loop muted playsinline webkit-playsinline crossorigin="anonymous" preload="auto"></video>`;
-      entitiesHTML += `<a-video id="${id}" class="clickable" src="#${id}-src" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.001" rotation="0 0 ${rotZ}" 
-                        material="opacity:${opac};transparent:true;shader:flat;src:#${id}-src" 
-                        onclick="openFullscreen('${id}-src')"
-                        visible="false"></a-video>`;
+      entitiesHTML += `<a-video id="${id}" src="#${id}-src" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.001" rotation="0 0 ${rotZ}" material="opacity:${opac};transparent:true;shader:flat;src:#${id}-src" visible="false"></a-video>`;
     } else if (layer.type === "image") {
       assetsHTML += `<img id="${id}-src" src="${layer.url}" crossorigin="anonymous" />`;
       entitiesHTML += `<a-image id="${id}" src="#${id}-src" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.001" rotation="0 0 ${rotZ}" material="opacity:${opac};transparent:true;shader:flat;src:#${id}-src" visible="false"></a-image>`;
@@ -348,7 +332,8 @@ function playVideos(layers, targetIdx) {
     const v = document.getElementById(`t${targetIdx}-layer-${i}-src`);
     if (!v) return;
     v.muted = !audioUnlocked;
-    v.play().then(() => { if (!audioUnlocked) unmuteBtn.style.display = "block"; })
+    v.play()
+      .then(() => { if (!audioUnlocked) unmuteBtn.style.display = "block"; })
       .catch(() => { unmuteBtn.style.display = "block"; });
   });
 }
