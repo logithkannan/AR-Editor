@@ -9,6 +9,90 @@
   <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
+  <!-- ── Chroma Key A-Frame Component ──────────────────────────────────────
+       Registers BEFORE the scene is created so A-Frame can pick it up.
+       Uses THREE.ShaderMaterial (the same Three.js already bundled in A-Frame)
+       to discard green pixels directly on the GPU — no canvas, no RAF needed.
+  ─────────────────────────────────────────────────────────────────────────── -->
+  <script>
+    AFRAME.registerComponent('chromakey-video', {
+      schema: {
+        src:       { type: 'selector' },
+        threshold: { type: 'number',  default: 0.25 },
+        color:     { type: 'color',   default: '#00FF00' }
+      },
+
+      init: function () {
+        const video = this.data.src;
+        if (!video) return;
+
+        // THREE.VideoTexture lives inside the same Three.js A-Frame already loaded
+        const texture = new THREE.VideoTexture(video);
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+
+        this.chromaMaterial = new THREE.ShaderMaterial({
+          transparent: true,
+          depthWrite:  false,
+          uniforms: {
+            tex:      { value: texture },
+            keyColor: { value: new THREE.Color(this.data.color) },
+            threshold:{ value: this.data.threshold }
+          },
+          vertexShader: `
+            varying vec2 vUv;
+            void main() {
+              vUv = uv;
+              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+          `,
+          fragmentShader: `
+            uniform sampler2D tex;
+            uniform vec3      keyColor;
+            uniform float     threshold;
+            varying vec2      vUv;
+            void main() {
+              vec4  col  = texture2D(tex, vUv);
+              float dist = distance(col.rgb, keyColor);
+              if (dist < threshold) discard;
+              gl_FragColor = col;
+            }
+          `
+        });
+
+        // Wait for mesh to be ready then swap material
+        const applyMaterial = () => {
+          const mesh = this.el.getObject3D('mesh');
+          if (mesh) {
+            mesh.material = this.chromaMaterial;
+          } else {
+            this.el.addEventListener('object3dset', () => {
+              const m = this.el.getObject3D('mesh');
+              if (m) m.material = this.chromaMaterial;
+            }, { once: true });
+          }
+        };
+        applyMaterial();
+
+        // Play the video (muted first; unmute button handles audio)
+        video.play().catch(() => {
+          document.body.addEventListener('click', () => video.play(), { once: true });
+        });
+      },
+
+      update: function () {
+        if (this.chromaMaterial) {
+          this.chromaMaterial.uniforms.threshold.value = this.data.threshold;
+          this.chromaMaterial.uniforms.keyColor.value.set(this.data.color);
+        }
+      },
+
+      remove: function () {
+        if (this.chromaMaterial) this.chromaMaterial.dispose();
+      }
+    });
+  </script>
+
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700&display=swap');
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -85,108 +169,65 @@
     /* ── ROUND FULLSCREEN BUTTON ─────────────────────────────────────────── */
     #fullscreen-btn {
       position: fixed;
-      bottom: 52px;
-      left: 50%;
+      bottom: 52px; left: 50%;
       transform: translateX(-50%) scale(0);
       z-index: 500;
       width: 58px; height: 58px;
-      border-radius: 50%;
-      border: none;
-      cursor: pointer;
-      background: rgba(10, 10, 20, 0.80);
-      backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
-      box-shadow:
-        0 0 0 2px rgba(99,202,255,0.55),
-        0 0 22px rgba(99,202,255,0.35),
-        inset 0 0 10px rgba(99,202,255,0.08);
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      border-radius: 50%; border: none; cursor: pointer;
+      background: rgba(10,10,20,0.80);
+      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      box-shadow: 0 0 0 2px rgba(99,202,255,0.55), 0 0 22px rgba(99,202,255,0.35), inset 0 0 10px rgba(99,202,255,0.08);
+      display: flex; align-items: center; justify-content: center;
       transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.2s ease;
       pointer-events: none;
     }
     #fullscreen-btn::before {
-      content: '';
-      position: absolute; inset: -6px;
-      border-radius: 50%;
+      content: ''; position: absolute; inset: -6px; border-radius: 50%;
       border: 2px solid rgba(99,202,255,0.3);
-      animation: pulse-ring 2s ease-out infinite;
-      pointer-events: none;
+      animation: pulse-ring 2s ease-out infinite; pointer-events: none;
     }
     @keyframes pulse-ring {
       0%   { transform: scale(1);    opacity: 0.7; }
       70%  { transform: scale(1.38); opacity: 0; }
       100% { transform: scale(1.38); opacity: 0; }
     }
-    #fullscreen-btn.visible {
-      transform: translateX(-50%) scale(1);
-      pointer-events: auto;
-    }
-    #fullscreen-btn:active { transform: translateX(-50%) scale(0.90) !important; }
+    #fullscreen-btn.visible { transform: translateX(-50%) scale(1); pointer-events: auto; }
+    #fullscreen-btn:active  { transform: translateX(-50%) scale(0.90) !important; }
     #fullscreen-btn svg {
-      width: 22px; height: 22px;
-      fill: none; stroke: #63caff;
+      width: 22px; height: 22px; fill: none; stroke: #63caff;
       stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
       filter: drop-shadow(0 0 5px rgba(99,202,255,0.7));
     }
     #fullscreen-btn .fs-label {
-      position: absolute;
-      bottom: calc(100% + 10px);
+      position: absolute; bottom: calc(100% + 10px);
       left: 50%; transform: translateX(-50%);
-      background: rgba(10,10,20,0.85);
-      border: 1px solid rgba(99,202,255,0.25);
-      color: #63caff;
-      font-size: 10px; font-weight: 600; letter-spacing: 0.05em;
+      background: rgba(10,10,20,0.85); border: 1px solid rgba(99,202,255,0.25);
+      color: #63caff; font-size: 10px; font-weight: 600; letter-spacing: 0.05em;
       white-space: nowrap; padding: 4px 10px; border-radius: 20px;
       pointer-events: none; opacity: 0;
     }
     #fullscreen-btn.visible .fs-label { animation: tooltip-fade 3s ease forwards; }
-    @keyframes tooltip-fade {
-      0%  { opacity:0; } 15% { opacity:1; } 75% { opacity:1; } 100% { opacity:0; }
-    }
+    @keyframes tooltip-fade { 0%{opacity:0} 15%{opacity:1} 75%{opacity:1} 100%{opacity:0} }
 
     /* ── FULLSCREEN VIDEO PLAYER ─────────────────────────────────────────── */
-    /* z-index 9999 — sits above the AR scene, camera feed, and all UI */
     #fs-player {
-      position: fixed; inset: 0;
-      z-index: 9999;
-      background: #000;
-      display: none;            /* toggled to flex when active */
-      flex-direction: column;
-      align-items: stretch;
-      justify-content: center;
+      position: fixed; inset: 0; z-index: 9999; background: #000;
+      display: none; flex-direction: column; align-items: stretch; justify-content: center;
     }
     #fs-player.active { display: flex; }
-
-    #fs-video {
-      width: 100%; height: 100%;
-      object-fit: contain;
-      background: #000;
-    }
-
-    /* Back / close button */
+    #fs-video { width: 100%; height: 100%; object-fit: contain; background: #000; }
     #fs-back-btn {
-      position: absolute;
-      top: 18px; left: 16px;
-      z-index: 10000;
+      position: absolute; top: 18px; left: 16px; z-index: 10000;
       display: flex; align-items: center; gap: 7px;
-      background: rgba(0,0,0,0.65);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      border: 1px solid rgba(255,255,255,0.2);
-      color: #fff;
-      font-family: 'Outfit', sans-serif;
-      font-size: 13px; font-weight: 600;
-      padding: 9px 16px 9px 11px;
-      border-radius: 50px;
-      cursor: pointer;
+      background: rgba(0,0,0,0.65); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.2); color: #fff;
+      font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 600;
+      padding: 9px 16px 9px 11px; border-radius: 50px; cursor: pointer;
       transition: background 0.2s, border-color 0.2s;
     }
     #fs-back-btn:active { background: rgba(99,202,255,0.2); border-color: #63caff; }
     #fs-back-btn svg {
-      width: 16px; height: 16px;
-      fill: none; stroke: #fff;
+      width: 16px; height: 16px; fill: none; stroke: #fff;
       stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;
     }
   </style>
@@ -239,12 +280,7 @@
   <span class="fs-label">Full Screen</span>
 </button>
 
-<!--
-  Full-screen video player.
-  When active it covers EVERYTHING (z-index 9999):
-  the camera feed, the AR canvas, all buttons — nothing shows through.
-  It is a plain HTML <video> with native controls.
--->
+<!-- Full-screen plain video player — covers everything including camera -->
 <div id="fs-player">
   <button id="fs-back-btn">
     <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
@@ -253,7 +289,6 @@
   <video id="fs-video" playsinline webkit-playsinline controls loop></video>
 </div>
 
-<div id="video-sources" style="display:none"></div>
 <div id="scene-container"></div>
 
 <script>
@@ -265,9 +300,9 @@ const projectId = new URLSearchParams(window.location.search).get("project");
 
 let audioUnlocked     = false;
 let activeTargetCount = 0;
-let activeVideoEl     = null; // the AR hidden <video> currently playing
+let activeVideoEl     = null;
 
-/* ── Status / error helpers ───────────────────────────────────────────────── */
+/* ── Helpers ──────────────────────────────────────────────────────────────── */
 function setStatus(msg) { document.getElementById("load-status").textContent = msg; }
 function showError(msg) {
   document.getElementById("loading-screen").style.display = "none";
@@ -275,73 +310,43 @@ function showError(msg) {
   document.getElementById("error-msg").textContent = msg;
 }
 
-/* ── Unmute ───────────────────────────────────────────────────────────────── */
+/* ── Unmute button ────────────────────────────────────────────────────────── */
 const unmuteBtn = document.getElementById("unmute-btn");
 unmuteBtn.addEventListener("click", () => {
   audioUnlocked = true;
-  document.querySelectorAll("video").forEach(v => { v.muted = false; v.play().catch(()=>{}); });
+  document.querySelectorAll("video").forEach(v => { v.muted = false; v.play().catch(() => {}); });
   unmuteBtn.style.display = "none";
 });
 
-/* ── Round button + fullscreen player ────────────────────────────────────── */
+/* ── Fullscreen player ────────────────────────────────────────────────────── */
 const fsBtn    = document.getElementById("fullscreen-btn");
 const fsPlayer = document.getElementById("fs-player");
 const fsVideo  = document.getElementById("fs-video");
 const fsBack   = document.getElementById("fs-back-btn");
 
-function showFsBtn(videoEl) {
-  activeVideoEl = videoEl;
-  fsBtn.classList.add("visible");
-}
-function hideFsBtn() {
-  activeVideoEl = null;
-  fsBtn.classList.remove("visible");
-}
+function showFsBtn(videoEl) { activeVideoEl = videoEl; fsBtn.classList.add("visible"); }
+function hideFsBtn()        { activeVideoEl = null;    fsBtn.classList.remove("visible"); }
 
-/* Pressing the round button:
-   1. Pause the hidden AR <video>
-   2. Copy its src + currentTime into the plain full-screen <video>
-   3. Show the full-screen player (covers everything — no camera visible)        */
 fsBtn.addEventListener("click", () => {
   if (!activeVideoEl) return;
-
-  // Grab the video URL from the AR element
-  const src = activeVideoEl.currentSrc || activeVideoEl.src
-              || activeVideoEl.getAttribute("src") || "";
-  const resumeTime = activeVideoEl.currentTime || 0;
-
-  // Pause the AR copy — avoid two decode pipelines fighting
+  const src = activeVideoEl.currentSrc || activeVideoEl.src || activeVideoEl.getAttribute("src") || "";
   activeVideoEl.pause();
-
-  // Feed the full-screen player
   fsVideo.src         = src;
-  fsVideo.currentTime = resumeTime;
-  fsVideo.muted       = false;   // plain player unmuted by default
+  fsVideo.currentTime = activeVideoEl.currentTime || 0;
+  fsVideo.muted       = false;
   fsVideo.loop        = true;
-
-  // Show the full-screen layer (z-index:9999 covers camera + AR completely)
   fsPlayer.classList.add("active");
-
-  fsVideo.play().catch(() => {
-    // If browser blocks autoplay, native controls let the user tap play
-  });
+  fsVideo.play().catch(() => {});
 });
 
-/* Pressing Back:
-   1. Hide the full-screen player
-   2. Resume the AR video from the same playhead position              */
 fsBack.addEventListener("click", () => {
-  const resumeTime = isFinite(fsVideo.currentTime) ? fsVideo.currentTime : 0;
-
+  const t = isFinite(fsVideo.currentTime) ? fsVideo.currentTime : 0;
   fsVideo.pause();
-  fsVideo.removeAttribute("src"); // fully release so no background decode
+  fsVideo.removeAttribute("src");
   fsVideo.load();
-
   fsPlayer.classList.remove("active");
-
-  // Resume the AR (hidden) video from where the user left off
   if (activeVideoEl) {
-    activeVideoEl.currentTime = resumeTime;
+    activeVideoEl.currentTime = t;
     activeVideoEl.muted = !audioUnlocked;
     activeVideoEl.play().catch(() => {});
   }
@@ -349,10 +354,7 @@ fsBack.addEventListener("click", () => {
 
 /* ── Init ─────────────────────────────────────────────────────────────────── */
 async function init() {
-  if (!projectId) {
-    showError("No project ID in URL. Open this link from the editor.");
-    return;
-  }
+  if (!projectId) { showError("No project ID in URL. Open this link from the editor."); return; }
   setStatus("Loading project...");
   let project;
   try {
@@ -361,10 +363,7 @@ async function init() {
     project = await res.json();
   } catch (e) { showError(e.message); return; }
 
-  if (!project.mindFileUrl) {
-    showError("No AR target compiled yet. Save the project in the editor first.");
-    return;
-  }
+  if (!project.mindFileUrl) { showError("No AR target compiled yet. Save the project in the editor first."); return; }
 
   if (project.type === "multi") {
     if (!project.targets?.length) { showError("No targets found in this project."); return; }
@@ -400,14 +399,11 @@ function buildSingleScene(project) {
   const instruction = document.getElementById("instruction-container");
 
   scene.addEventListener("renderstart", () => {
-    setTimeout(() => {
-      document.getElementById("loading-screen").style.display = "none";
-      setupChromaLayers();
-    }, 500);
+    setTimeout(() => { document.getElementById("loading-screen").style.display = "none"; }, 500);
   });
 
   arTarget.addEventListener("targetFound", () => {
-    scanLine.style.display   = "none";
+    scanLine.style.display    = "none";
     viewfinder.classList.add("viewfinder-active");
     instruction.style.opacity = "0";
     showLayers(project.layers, 0);
@@ -417,7 +413,7 @@ function buildSingleScene(project) {
   });
 
   arTarget.addEventListener("targetLost", () => {
-    scanLine.style.display   = "block";
+    scanLine.style.display    = "block";
     viewfinder.classList.remove("viewfinder-active");
     instruction.style.opacity = "1";
     hideLayers(project.layers, 0);
@@ -457,10 +453,7 @@ function buildMultiScene(project) {
   instrText.textContent = `Point camera at any of ${project.targets.length} images`;
 
   scene.addEventListener("renderstart", () => {
-    setTimeout(() => {
-      document.getElementById("loading-screen").style.display = "none";
-      setupChromaLayers();
-    }, 500);
+    setTimeout(() => { document.getElementById("loading-screen").style.display = "none"; }, 500);
   });
 
   project.targets.forEach((target, idx) => {
@@ -468,11 +461,11 @@ function buildMultiScene(project) {
 
     arTarget.addEventListener("targetFound", () => {
       activeTargetCount++;
-      scanLine.style.display   = "none";
+      scanLine.style.display    = "none";
       viewfinder.classList.add("viewfinder-active");
       instruction.style.opacity = "0";
       indicatorText.textContent = target.name || `Target ${idx}`;
-      indicator.style.display  = "flex";
+      indicator.style.display   = "flex";
       showLayers(target.layers, idx);
       playVideos(target.layers, idx);
       const vid = getFirstVideoEl(target.layers, idx);
@@ -484,142 +477,22 @@ function buildMultiScene(project) {
       hideLayers(target.layers, idx);
       pauseVideos(target.layers, idx);
       if (activeTargetCount === 0) {
-        scanLine.style.display   = "block";
+        scanLine.style.display    = "block";
         viewfinder.classList.remove("viewfinder-active");
         instruction.style.opacity = "1";
-        indicator.style.display  = "none";
+        indicator.style.display   = "none";
         hideFsBtn();
       }
     });
   });
 }
 
-/* ── DOM helpers ──────────────────────────────────────────────────────────── */
+/* ── Build HTML for one target's layers ──────────────────────────────────── */
 const W = 500, H = 360;
-
-/* ── Chroma Key WebGL Engine ─────────────────────────────────────────────────
-   For green-screen video layers we:
-   1. Keep the hidden <video> element as the source
-   2. Create an offscreen <canvas> of the same size
-   3. Every animation frame, draw the video onto the canvas then run a
-      per-pixel GLSL-equivalent chroma-key pass in a tiny WebGL program
-   4. Register the canvas as an A-Frame texture so the AR plane uses it
-   The result: green pixels become transparent in real-time on the AR surface.
-──────────────────────────────────────────────────────────────────────────── */
-
-const chromaCanvases = {}; // id → { canvas, gl, program, texLoc, vbuf }
-
-function initChromaGL(canvasId, threshold) {
-  const canvas = document.createElement("canvas");
-  canvas.width  = 512;
-  canvas.height = 512;
-  canvas.id = canvasId + "-canvas";
-  document.getElementById("video-sources").appendChild(canvas);
-
-  const gl = canvas.getContext("webgl", { premultipliedAlpha: false, alpha: true });
-  if (!gl) return null;
-
-  // Vertex shader — full-screen quad
-  const vsrc = `
-    attribute vec2 a_pos;
-    varying vec2 v_uv;
-    void main(){
-      v_uv = vec2(a_pos.x * 0.5 + 0.5, 0.5 - a_pos.y * 0.5);
-      gl_Position = vec4(a_pos, 0.0, 1.0);
-    }`;
-
-  // Fragment shader — chroma key removal targeting green screen
-  const fsrc = `
-    precision mediump float;
-    uniform sampler2D u_tex;
-    uniform float u_threshold;
-    varying vec2 v_uv;
-    void main(){
-      vec4 c = texture2D(u_tex, v_uv);
-      // Distance from pure green in YCbCr-like space
-      float cb = c.b - c.g;
-      float cr = c.r - c.g;
-      float dist = sqrt(cb*cb + cr*cr);
-      // If pixel is "green-ish" (low distance = close to green), make transparent
-      float alpha = step(u_threshold, dist);
-      // Edge softening: smooth transition band
-      alpha = smoothstep(u_threshold * 0.6, u_threshold, dist);
-      gl_FragColor = vec4(c.rgb * alpha, alpha);
-    }`;
-
-  const compile = (type, src) => {
-    const sh = gl.createShader(type);
-    gl.shaderSource(sh, src); gl.compileShader(sh); return sh;
-  };
-  const prog = gl.createProgram();
-  gl.attachShader(prog, compile(gl.VERTEX_SHADER, vsrc));
-  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fsrc));
-  gl.linkProgram(prog); gl.useProgram(prog);
-
-  // Full-screen quad
-  const vbuf = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, vbuf);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
-  const aPos = gl.getAttribLocation(prog, "a_pos");
-  gl.enableVertexAttribArray(aPos);
-  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
-
-  const texLoc   = gl.getUniformLocation(prog, "u_tex");
-  const threshLoc = gl.getUniformLocation(prog, "u_threshold");
-  gl.uniform1f(threshLoc, threshold || 0.25);
-
-  // Create the video texture
-  const tex = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-
-  gl.enable(gl.BLEND);
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-
-  chromaCanvases[canvasId] = { canvas, gl, program: prog, texLoc, threshLoc, tex };
-  return canvas;
-}
-
-function runChromaFrame(id, videoEl) {
-  const state = chromaCanvases[id];
-  if (!state || videoEl.readyState < 2) return;
-  const { gl, tex, texLoc } = state;
-  gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, videoEl);
-  gl.uniform1i(texLoc, 0);
-  gl.viewport(0, 0, state.canvas.width, state.canvas.height);
-  gl.clear(gl.COLOR_BUFFER_BIT);
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-}
-
-// Global RAF loop for all active chroma layers
-const chromaActive = {}; // id → videoEl
-function startChromaLoop(id, videoEl) {
-  chromaActive[id] = videoEl;
-}
-function stopChromaLoop(id) {
-  delete chromaActive[id];
-}
-
-// Single shared RAF drives all chroma canvases
-(function chromaRAF() {
-  for (const id in chromaActive) {
-    runChromaFrame(id, chromaActive[id]);
-    // Notify A-Frame that this texture has changed
-    const aEl = document.getElementById(id);
-    if (aEl) {
-      const mat = aEl.components?.material;
-      if (mat?.material?.map) mat.material.map.needsUpdate = true;
-    }
-  }
-  requestAnimationFrame(chromaRAF);
-})();
 
 function buildTargetHTML(layers, targetIdx) {
   let assetsHTML = "", entitiesHTML = "";
+
   (layers || []).forEach((layer, i) => {
     const id     = `t${targetIdx}-layer-${i}`;
     const scaleW = (layer.width  / W).toFixed(3);
@@ -630,60 +503,64 @@ function buildTargetHTML(layers, targetIdx) {
     const opac   = (layer.opacity ?? 1).toFixed(2);
 
     if (layer.type === "video") {
-      // Always create the hidden source <video>
+      // Hidden <video> element — always muted to satisfy autoplay policy
       assetsHTML += `<video id="${id}-src" src="${layer.url}" loop muted playsinline webkit-playsinline crossorigin="anonymous" preload="auto"></video>`;
 
       if (layer.isGreenScreen) {
-        // Green-screen path: create a WebGL canvas, register it as the texture
+        // ── GREEN SCREEN path ──────────────────────────────────────────────
+        // Use <a-plane> + chromakey-video component (THREE.ShaderMaterial).
+        // The component receives the <video> element via selector and applies
+        // a GPU fragment shader that discards pixels close to green (#00FF00).
         const threshold = (layer.chromaThreshold || 0.25).toFixed(3);
-        // Canvas is created after DOM ready via initChromaGL; here we register a placeholder
-        // A-Frame canvas texture: use a <canvas> element as the src
-        assetsHTML += `<canvas id="${id}-chroma-canvas" width="512" height="512" style="display:none"></canvas>`;
-        // Tell A-Frame to use the canvas as texture; chromaSetup runs after scene loads
-        entitiesHTML += `<a-plane id="${id}" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.001" rotation="0 0 ${rotZ}" material="src:#${id}-chroma-canvas;transparent:true;alphaTest:0.01;opacity:${opac};shader:flat;side:double" visible="false" data-chroma="true" data-video-id="${id}-src" data-threshold="${threshold}"></a-plane>`;
+        entitiesHTML += `<a-plane id="${id}"
+          width="${scaleW}" height="${scaleH}"
+          position="${posX} ${posY} 0.001"
+          rotation="0 0 ${rotZ}"
+          material="transparent: true; opacity: ${opac}"
+          chromakey-video="src: #${id}-src; threshold: ${threshold}; color: #00FF00"
+          visible="false">
+        </a-plane>`;
       } else {
-        // Normal video path — unchanged
-        entitiesHTML += `<a-video id="${id}" src="#${id}-src" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.001" rotation="0 0 ${rotZ}" material="opacity:${opac};transparent:true;shader:flat;src:#${id}-src" visible="false"></a-video>`;
+        // ── NORMAL video path ──────────────────────────────────────────────
+        entitiesHTML += `<a-video id="${id}"
+          src="#${id}-src"
+          width="${scaleW}" height="${scaleH}"
+          position="${posX} ${posY} 0.001"
+          rotation="0 0 ${rotZ}"
+          material="opacity: ${opac}; transparent: true; shader: flat; src: #${id}-src"
+          visible="false">
+        </a-video>`;
       }
+
     } else if (layer.type === "image") {
       assetsHTML   += `<img id="${id}-src" src="${layer.url}" crossorigin="anonymous" />`;
-      entitiesHTML += `<a-image id="${id}" src="#${id}-src" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.001" rotation="0 0 ${rotZ}" material="opacity:${opac};transparent:true;shader:flat;src:#${id}-src" visible="false"></a-image>`;
+      entitiesHTML += `<a-image id="${id}"
+        src="#${id}-src"
+        width="${scaleW}" height="${scaleH}"
+        position="${posX} ${posY} 0.001"
+        rotation="0 0 ${rotZ}"
+        material="opacity: ${opac}; transparent: true; shader: flat; src: #${id}-src"
+        visible="false">
+      </a-image>`;
+
     } else if (layer.type === "text") {
       const textWidth = ((layer.width / W) * 2).toFixed(3);
       const escaped   = (layer.content || "").replace(/"/g, "&quot;");
-      entitiesHTML   += `<a-text id="${id}" value="${escaped}" align="center" color="white" width="${textWidth}" position="${posX} ${posY} 0.001" opacity="${opac}" visible="false"></a-text>`;
+      entitiesHTML   += `<a-text id="${id}"
+        value="${escaped}" align="center" color="white"
+        width="${textWidth}"
+        position="${posX} ${posY} 0.001"
+        rotation="0 0 ${rotZ}"
+        opacity="${opac}"
+        visible="false">
+      </a-text>`;
     }
   });
+
   return { assetsHTML, entitiesHTML };
 }
 
-/* After the A-Frame scene is built, wire up chroma-key layers */
-function setupChromaLayers() {
-  document.querySelectorAll("[data-chroma='true']").forEach(aEl => {
-    const id        = aEl.id;
-    const videoId   = aEl.dataset.videoId;
-    const threshold = parseFloat(aEl.dataset.threshold || "0.25");
-    const videoEl   = document.getElementById(videoId);
-    const placeholder = document.getElementById(id + "-chroma-canvas");
-    if (!videoEl || !placeholder) return;
-
-    // Init the WebGL chroma canvas, replace the placeholder
-    const glCanvas = initChromaGL(id, threshold);
-    if (!glCanvas) return;
-
-    // Swap the placeholder for the real GL canvas in the DOM
-    // (A-Frame already grabbed a reference to it by id; we reuse the same canvas id)
-    glCanvas.id = id + "-chroma-canvas";
-    placeholder.replaceWith(glCanvas);
-
-    // Once A-Frame texture resolves, keep it live
-    aEl.addEventListener("materialtextureloaded", () => {
-      const mat = aEl.components?.material;
-      if (mat?.material?.map) mat.material.map.needsUpdate = true;
-    });
-  });
-}
-
+/* ── Layer visibility ─────────────────────────────────────────────────────── */
 function showLayers(layers, idx) {
   (layers || []).forEach((_, i) => {
     const el = document.getElementById(`t${idx}-layer-${i}`);
@@ -696,31 +573,28 @@ function hideLayers(layers, idx) {
     if (el) el.setAttribute("visible", false);
   });
 }
+
+/* ── Video play / pause ───────────────────────────────────────────────────── */
 function playVideos(layers, idx) {
   (layers || []).forEach((layer, i) => {
     if (layer.type !== "video") return;
-    const id = `t${idx}-layer-${i}`;
-    const v = document.getElementById(`${id}-src`);
+    const v = document.getElementById(`t${idx}-layer-${i}-src`);
     if (!v) return;
     v.muted = !audioUnlocked;
     v.play()
       .then(() => { if (!audioUnlocked) unmuteBtn.style.display = "block"; })
       .catch(() => { unmuteBtn.style.display = "block"; });
-    // Start chroma RAF for green-screen layers
-    if (layer.isGreenScreen && chromaCanvases[id]) {
-      startChromaLoop(id, v);
-    }
   });
 }
 function pauseVideos(layers, idx) {
   (layers || []).forEach((layer, i) => {
     if (layer.type !== "video") return;
-    const id = `t${idx}-layer-${i}`;
-    const v = document.getElementById(`${id}-src`);
+    const v = document.getElementById(`t${idx}-layer-${i}-src`);
     if (v) { v.pause(); v.currentTime = 0; }
-    if (layer.isGreenScreen) stopChromaLoop(id);
   });
 }
+
+/* Returns the first <video> source element (for fullscreen button) */
 function getFirstVideoEl(layers, idx) {
   for (let i = 0; i < (layers || []).length; i++) {
     if (layers[i].type === "video") {
@@ -731,7 +605,7 @@ function getFirstVideoEl(layers, idx) {
   return null;
 }
 
-// iOS DeviceOrientation permission
+/* ── iOS DeviceOrientation permission ────────────────────────────────────── */
 if (typeof DeviceOrientationEvent?.requestPermission === "function") {
   const req = () => {
     DeviceOrientationEvent.requestPermission()
