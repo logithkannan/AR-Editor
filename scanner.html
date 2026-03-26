@@ -400,7 +400,10 @@ function buildSingleScene(project) {
   const instruction = document.getElementById("instruction-container");
 
   scene.addEventListener("renderstart", () => {
-    setTimeout(() => { document.getElementById("loading-screen").style.display = "none"; }, 500);
+    setTimeout(() => {
+      document.getElementById("loading-screen").style.display = "none";
+      setupChromaLayers();
+    }, 500);
   });
 
   arTarget.addEventListener("targetFound", () => {
@@ -454,7 +457,10 @@ function buildMultiScene(project) {
   instrText.textContent = `Point camera at any of ${project.targets.length} images`;
 
   scene.addEventListener("renderstart", () => {
-    setTimeout(() => { document.getElementById("loading-screen").style.display = "none"; }, 500);
+    setTimeout(() => {
+      document.getElementById("loading-screen").style.display = "none";
+      setupChromaLayers();
+    }, 500);
   });
 
   project.targets.forEach((target, idx) => {
@@ -491,6 +497,127 @@ function buildMultiScene(project) {
 /* ── DOM helpers ──────────────────────────────────────────────────────────── */
 const W = 500, H = 360;
 
+/* ── Chroma Key WebGL Engine ─────────────────────────────────────────────────
+   For green-screen video layers we:
+   1. Keep the hidden <video> element as the source
+   2. Create an offscreen <canvas> of the same size
+   3. Every animation frame, draw the video onto the canvas then run a
+      per-pixel GLSL-equivalent chroma-key pass in a tiny WebGL program
+   4. Register the canvas as an A-Frame texture so the AR plane uses it
+   The result: green pixels become transparent in real-time on the AR surface.
+──────────────────────────────────────────────────────────────────────────── */
+
+const chromaCanvases = {}; // id → { canvas, gl, program, texLoc, vbuf }
+
+function initChromaGL(canvasId, threshold) {
+  const canvas = document.createElement("canvas");
+  canvas.width  = 512;
+  canvas.height = 512;
+  canvas.id = canvasId + "-canvas";
+  document.getElementById("video-sources").appendChild(canvas);
+
+  const gl = canvas.getContext("webgl", { premultipliedAlpha: false, alpha: true });
+  if (!gl) return null;
+
+  // Vertex shader — full-screen quad
+  const vsrc = `
+    attribute vec2 a_pos;
+    varying vec2 v_uv;
+    void main(){
+      v_uv = vec2(a_pos.x * 0.5 + 0.5, 0.5 - a_pos.y * 0.5);
+      gl_Position = vec4(a_pos, 0.0, 1.0);
+    }`;
+
+  // Fragment shader — chroma key removal targeting green screen
+  const fsrc = `
+    precision mediump float;
+    uniform sampler2D u_tex;
+    uniform float u_threshold;
+    varying vec2 v_uv;
+    void main(){
+      vec4 c = texture2D(u_tex, v_uv);
+      // Distance from pure green in YCbCr-like space
+      float cb = c.b - c.g;
+      float cr = c.r - c.g;
+      float dist = sqrt(cb*cb + cr*cr);
+      // If pixel is "green-ish" (low distance = close to green), make transparent
+      float alpha = step(u_threshold, dist);
+      // Edge softening: smooth transition band
+      alpha = smoothstep(u_threshold * 0.6, u_threshold, dist);
+      gl_FragColor = vec4(c.rgb * alpha, alpha);
+    }`;
+
+  const compile = (type, src) => {
+    const sh = gl.createShader(type);
+    gl.shaderSource(sh, src); gl.compileShader(sh); return sh;
+  };
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl.VERTEX_SHADER, vsrc));
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fsrc));
+  gl.linkProgram(prog); gl.useProgram(prog);
+
+  // Full-screen quad
+  const vbuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbuf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+  const aPos = gl.getAttribLocation(prog, "a_pos");
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+  const texLoc   = gl.getUniformLocation(prog, "u_tex");
+  const threshLoc = gl.getUniformLocation(prog, "u_threshold");
+  gl.uniform1f(threshLoc, threshold || 0.25);
+
+  // Create the video texture
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+  chromaCanvases[canvasId] = { canvas, gl, program: prog, texLoc, threshLoc, tex };
+  return canvas;
+}
+
+function runChromaFrame(id, videoEl) {
+  const state = chromaCanvases[id];
+  if (!state || videoEl.readyState < 2) return;
+  const { gl, tex, texLoc } = state;
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, videoEl);
+  gl.uniform1i(texLoc, 0);
+  gl.viewport(0, 0, state.canvas.width, state.canvas.height);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+// Global RAF loop for all active chroma layers
+const chromaActive = {}; // id → videoEl
+function startChromaLoop(id, videoEl) {
+  chromaActive[id] = videoEl;
+}
+function stopChromaLoop(id) {
+  delete chromaActive[id];
+}
+
+// Single shared RAF drives all chroma canvases
+(function chromaRAF() {
+  for (const id in chromaActive) {
+    runChromaFrame(id, chromaActive[id]);
+    // Notify A-Frame that this texture has changed
+    const aEl = document.getElementById(id);
+    if (aEl) {
+      const mat = aEl.components?.material;
+      if (mat?.material?.map) mat.material.map.needsUpdate = true;
+    }
+  }
+  requestAnimationFrame(chromaRAF);
+})();
+
 function buildTargetHTML(layers, targetIdx) {
   let assetsHTML = "", entitiesHTML = "";
   (layers || []).forEach((layer, i) => {
@@ -503,8 +630,21 @@ function buildTargetHTML(layers, targetIdx) {
     const opac   = (layer.opacity ?? 1).toFixed(2);
 
     if (layer.type === "video") {
-      assetsHTML   += `<video id="${id}-src" src="${layer.url}" loop muted playsinline webkit-playsinline crossorigin="anonymous" preload="auto"></video>`;
-      entitiesHTML += `<a-video id="${id}" src="#${id}-src" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.001" rotation="0 0 ${rotZ}" material="opacity:${opac};transparent:true;shader:flat;src:#${id}-src" visible="false"></a-video>`;
+      // Always create the hidden source <video>
+      assetsHTML += `<video id="${id}-src" src="${layer.url}" loop muted playsinline webkit-playsinline crossorigin="anonymous" preload="auto"></video>`;
+
+      if (layer.isGreenScreen) {
+        // Green-screen path: create a WebGL canvas, register it as the texture
+        const threshold = (layer.chromaThreshold || 0.25).toFixed(3);
+        // Canvas is created after DOM ready via initChromaGL; here we register a placeholder
+        // A-Frame canvas texture: use a <canvas> element as the src
+        assetsHTML += `<canvas id="${id}-chroma-canvas" width="512" height="512" style="display:none"></canvas>`;
+        // Tell A-Frame to use the canvas as texture; chromaSetup runs after scene loads
+        entitiesHTML += `<a-plane id="${id}" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.001" rotation="0 0 ${rotZ}" material="src:#${id}-chroma-canvas;transparent:true;alphaTest:0.01;opacity:${opac};shader:flat;side:double" visible="false" data-chroma="true" data-video-id="${id}-src" data-threshold="${threshold}"></a-plane>`;
+      } else {
+        // Normal video path — unchanged
+        entitiesHTML += `<a-video id="${id}" src="#${id}-src" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.001" rotation="0 0 ${rotZ}" material="opacity:${opac};transparent:true;shader:flat;src:#${id}-src" visible="false"></a-video>`;
+      }
     } else if (layer.type === "image") {
       assetsHTML   += `<img id="${id}-src" src="${layer.url}" crossorigin="anonymous" />`;
       entitiesHTML += `<a-image id="${id}" src="#${id}-src" width="${scaleW}" height="${scaleH}" position="${posX} ${posY} 0.001" rotation="0 0 ${rotZ}" material="opacity:${opac};transparent:true;shader:flat;src:#${id}-src" visible="false"></a-image>`;
@@ -515,6 +655,33 @@ function buildTargetHTML(layers, targetIdx) {
     }
   });
   return { assetsHTML, entitiesHTML };
+}
+
+/* After the A-Frame scene is built, wire up chroma-key layers */
+function setupChromaLayers() {
+  document.querySelectorAll("[data-chroma='true']").forEach(aEl => {
+    const id        = aEl.id;
+    const videoId   = aEl.dataset.videoId;
+    const threshold = parseFloat(aEl.dataset.threshold || "0.25");
+    const videoEl   = document.getElementById(videoId);
+    const placeholder = document.getElementById(id + "-chroma-canvas");
+    if (!videoEl || !placeholder) return;
+
+    // Init the WebGL chroma canvas, replace the placeholder
+    const glCanvas = initChromaGL(id, threshold);
+    if (!glCanvas) return;
+
+    // Swap the placeholder for the real GL canvas in the DOM
+    // (A-Frame already grabbed a reference to it by id; we reuse the same canvas id)
+    glCanvas.id = id + "-chroma-canvas";
+    placeholder.replaceWith(glCanvas);
+
+    // Once A-Frame texture resolves, keep it live
+    aEl.addEventListener("materialtextureloaded", () => {
+      const mat = aEl.components?.material;
+      if (mat?.material?.map) mat.material.map.needsUpdate = true;
+    });
+  });
 }
 
 function showLayers(layers, idx) {
@@ -532,19 +699,26 @@ function hideLayers(layers, idx) {
 function playVideos(layers, idx) {
   (layers || []).forEach((layer, i) => {
     if (layer.type !== "video") return;
-    const v = document.getElementById(`t${idx}-layer-${i}-src`);
+    const id = `t${idx}-layer-${i}`;
+    const v = document.getElementById(`${id}-src`);
     if (!v) return;
     v.muted = !audioUnlocked;
     v.play()
       .then(() => { if (!audioUnlocked) unmuteBtn.style.display = "block"; })
       .catch(() => { unmuteBtn.style.display = "block"; });
+    // Start chroma RAF for green-screen layers
+    if (layer.isGreenScreen && chromaCanvases[id]) {
+      startChromaLoop(id, v);
+    }
   });
 }
 function pauseVideos(layers, idx) {
   (layers || []).forEach((layer, i) => {
     if (layer.type !== "video") return;
-    const v = document.getElementById(`t${idx}-layer-${i}-src`);
+    const id = `t${idx}-layer-${i}`;
+    const v = document.getElementById(`${id}-src`);
     if (v) { v.pause(); v.currentTime = 0; }
+    if (layer.isGreenScreen) stopChromaLoop(id);
   });
 }
 function getFirstVideoEl(layers, idx) {
