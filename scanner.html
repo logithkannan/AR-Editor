@@ -64,7 +64,6 @@
     }
     .instruction-text { font-weight: 500; font-size: 1rem; }
 
-    /* Active target indicator — shows which image was found */
     #target-indicator {
       position: fixed; top: 24px; left: 50%; transform: translateX(-50%);
       z-index: 20; display: none;
@@ -82,6 +81,148 @@
       cursor: pointer; border: none; font-family: inherit; font-weight: 700;
       box-shadow: 0 0 20px rgba(99,202,255,0.6);
     }
+
+    /* ── FULLSCREEN ROUND BUTTON ───────────────────────────────────────────── */
+    #fullscreen-btn {
+      position: fixed;
+      bottom: 52px;
+      left: 50%;
+      transform: translateX(-50%) scale(0);
+      z-index: 500;
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+      background: rgba(10, 10, 20, 0.75);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      box-shadow:
+        0 0 0 2px rgba(99, 202, 255, 0.55),
+        0 0 22px rgba(99, 202, 255, 0.35),
+        inset 0 0 10px rgba(99, 202, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+                  box-shadow 0.2s ease,
+                  background 0.2s ease;
+      pointer-events: none;
+    }
+
+    /* Pulsing ring animation while button is visible */
+    #fullscreen-btn::before {
+      content: '';
+      position: absolute;
+      inset: -6px;
+      border-radius: 50%;
+      border: 2px solid rgba(99, 202, 255, 0.3);
+      animation: pulse-ring 2s ease-out infinite;
+      pointer-events: none;
+    }
+
+    @keyframes pulse-ring {
+      0%   { transform: scale(1);    opacity: 0.7; }
+      70%  { transform: scale(1.35); opacity: 0;   }
+      100% { transform: scale(1.35); opacity: 0;   }
+    }
+
+    #fullscreen-btn.visible {
+      transform: translateX(-50%) scale(1);
+      pointer-events: auto;
+    }
+
+    #fullscreen-btn:active {
+      transform: translateX(-50%) scale(0.92);
+      box-shadow:
+        0 0 0 2px rgba(99, 202, 255, 0.8),
+        0 0 30px rgba(99, 202, 255, 0.6),
+        inset 0 0 14px rgba(99, 202, 255, 0.15);
+    }
+
+    /* SVG icon inside the button */
+    #fullscreen-btn svg {
+      width: 22px;
+      height: 22px;
+      fill: none;
+      stroke: #63caff;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 0 4px rgba(99, 202, 255, 0.6));
+    }
+
+    /* Tooltip label */
+    #fullscreen-btn .fs-label {
+      position: absolute;
+      bottom: calc(100% + 10px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(10,10,20,0.85);
+      border: 1px solid rgba(99,202,255,0.25);
+      color: #63caff;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+      padding: 4px 10px;
+      border-radius: 20px;
+      backdrop-filter: blur(8px);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    #fullscreen-btn.visible .fs-label {
+      animation: tooltip-fade 3s ease forwards;
+    }
+
+    @keyframes tooltip-fade {
+      0%   { opacity: 0; }
+      15%  { opacity: 1; }
+      70%  { opacity: 1; }
+      100% { opacity: 0; }
+    }
+
+    /* ── NATIVE FULLSCREEN OVERLAY (fallback for iOS that blocks requestFullscreen) ── */
+    #fs-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 900;
+      background: #000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+    #fs-overlay.active { display: flex; }
+
+    #fs-video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    #fs-close-btn {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(255,255,255,0.3);
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(8px);
+      color: white;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 910;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    #fs-close-btn:hover { background: rgba(99,202,255,0.2); border-color: #63caff; }
   </style>
 </head>
 <body>
@@ -121,6 +262,24 @@
 
 <button id="unmute-btn">🔊 Click to Enable Sound</button>
 
+<!-- ── FULLSCREEN ROUND BUTTON ── -->
+<button id="fullscreen-btn" aria-label="Open fullscreen video">
+  <!-- Expand / fullscreen icon -->
+  <svg viewBox="0 0 24 24">
+    <polyline points="15 3 21 3 21 9"/>
+    <polyline points="9 21 3 21 3 15"/>
+    <line x1="21" y1="3" x2="14" y2="10"/>
+    <line x1="3" y1="21" x2="10" y2="14"/>
+  </svg>
+  <span class="fs-label">Full Screen</span>
+</button>
+
+<!-- ── FULLSCREEN OVERLAY (iOS fallback) ── -->
+<div id="fs-overlay">
+  <button id="fs-close-btn" aria-label="Close fullscreen">✕</button>
+  <video id="fs-video" playsinline webkit-playsinline controls></video>
+</div>
+
 <div id="video-sources" style="display:none"></div>
 <div id="scene-container"></div>
 
@@ -131,7 +290,10 @@ const rawUrl = (path) => `https://raw.githubusercontent.com/${GITHUB_USER}/${GIT
 const projectId = new URLSearchParams(window.location.search).get("project");
 
 let audioUnlocked = false;
-let activeTargetCount = 0; // how many targets currently visible
+let activeTargetCount = 0;
+
+// Tracks the currently playing video element (for fullscreen)
+let activeVideoEl = null;
 
 function setStatus(msg) { document.getElementById("load-status").textContent = msg; }
 function showError(msg) {
@@ -146,6 +308,76 @@ unmuteBtn.addEventListener("click", () => {
   document.querySelectorAll("video").forEach(v => { v.muted = false; v.play().catch(() => {}); });
   unmuteBtn.style.display = "none";
 });
+
+// ── FULLSCREEN BUTTON LOGIC ────────────────────────────────────────────────
+const fsBtn    = document.getElementById("fullscreen-btn");
+const fsOverlay = document.getElementById("fs-overlay");
+const fsVideo   = document.getElementById("fs-video");
+const fsCloseBtn = document.getElementById("fs-close-btn");
+
+function showFullscreenBtn(videoEl) {
+  activeVideoEl = videoEl;
+  fsBtn.classList.add("visible");
+}
+
+function hideFullscreenBtn() {
+  activeVideoEl = null;
+  fsBtn.classList.remove("visible");
+}
+
+function openFullscreen() {
+  if (!activeVideoEl) return;
+
+  const src = activeVideoEl.src || activeVideoEl.currentSrc;
+  const currentTime = activeVideoEl.currentTime;
+  const isMuted = activeVideoEl.muted;
+
+  // Try native requestFullscreen on the source <video> element first
+  if (activeVideoEl.requestFullscreen) {
+    activeVideoEl.requestFullscreen().catch(() => useOverlayFullscreen(src, currentTime, isMuted));
+    return;
+  }
+  // Safari / iOS webkit
+  if (activeVideoEl.webkitRequestFullscreen) {
+    activeVideoEl.webkitRequestFullscreen();
+    return;
+  }
+  if (activeVideoEl.webkitEnterFullscreen) {
+    activeVideoEl.webkitEnterFullscreen();
+    return;
+  }
+  // Fallback: custom overlay
+  useOverlayFullscreen(src, currentTime, isMuted);
+}
+
+function useOverlayFullscreen(src, currentTime, isMuted) {
+  fsVideo.src = src;
+  fsVideo.currentTime = currentTime || 0;
+  fsVideo.muted = isMuted;
+  fsVideo.loop = true;
+  fsOverlay.classList.add("active");
+  fsVideo.play().catch(() => {});
+}
+
+function closeOverlayFullscreen() {
+  fsVideo.pause();
+  fsVideo.src = "";
+  fsOverlay.classList.remove("active");
+}
+
+fsBtn.addEventListener("click", openFullscreen);
+fsCloseBtn.addEventListener("click", closeOverlayFullscreen);
+
+// Also close overlay when native fullscreen exits
+document.addEventListener("fullscreenchange", () => {
+  if (!document.fullscreenElement) {
+    // sync back time to AR video if possible
+    if (activeVideoEl && fsVideo.currentTime) {
+      try { activeVideoEl.currentTime = fsVideo.currentTime; } catch(e) {}
+    }
+  }
+});
+// ───────────────────────────────────────────────────────────────────────────
 
 async function init() {
   if (!projectId) { showError("No project ID in URL. Open this link from the editor."); return; }
@@ -202,6 +434,10 @@ function buildSingleScene(project) {
     instruction.style.opacity = "0";
     showLayers(project.layers, 0);
     playVideos(project.layers, 0);
+
+    // Show fullscreen button if this project has a video layer
+    const firstVideo = getFirstVideoEl(project.layers, 0);
+    if (firstVideo) showFullscreenBtn(firstVideo);
   });
   arTarget.addEventListener("targetLost", () => {
     scanLine.style.display = "block";
@@ -209,6 +445,7 @@ function buildSingleScene(project) {
     instruction.style.opacity = "1";
     hideLayers(project.layers, 0);
     pauseVideos(project.layers, 0);
+    hideFullscreenBtn();
   });
 }
 
@@ -241,7 +478,6 @@ function buildMultiScene(project) {
   const indicatorText = document.getElementById("target-indicator-text");
   const instrText = document.getElementById("instruction-text");
 
-  // Show how many targets total
   instrText.textContent = `Point camera at any of ${project.targets.length} images`;
 
   scene.addEventListener("renderstart", () => {
@@ -256,13 +492,14 @@ function buildMultiScene(project) {
       scanLine.style.display = "none";
       viewfinder.classList.add("viewfinder-active");
       instruction.style.opacity = "0";
-
-      // Show which target was found
       indicatorText.textContent = target.name || `Target ${idx}`;
       indicator.style.display = "flex";
-
       showLayers(target.layers, idx);
       playVideos(target.layers, idx);
+
+      // Show fullscreen button for the first video found in this target
+      const firstVideo = getFirstVideoEl(target.layers, idx);
+      if (firstVideo) showFullscreenBtn(firstVideo);
     });
 
     arTarget.addEventListener("targetLost", () => {
@@ -275,6 +512,7 @@ function buildMultiScene(project) {
         viewfinder.classList.remove("viewfinder-active");
         instruction.style.opacity = "1";
         indicator.style.display = "none";
+        hideFullscreenBtn();
       }
     });
   });
@@ -344,6 +582,17 @@ function pauseVideos(layers, targetIdx) {
     const v = document.getElementById(`t${targetIdx}-layer-${i}-src`);
     if (v) { v.pause(); v.currentTime = 0; }
   });
+}
+
+/** Returns the first <video> DOM element found for the given layers / targetIdx */
+function getFirstVideoEl(layers, targetIdx) {
+  for (let i = 0; i < (layers || []).length; i++) {
+    if (layers[i].type === "video") {
+      const v = document.getElementById(`t${targetIdx}-layer-${i}-src`);
+      if (v) return v;
+    }
+  }
+  return null;
 }
 
 // iOS DeviceOrientation permission
