@@ -292,11 +292,47 @@
 <div id="scene-container"></div>
 
 <script>
+// ─── GitHub Scanner Configuration ─────────────────────────────────────────────
 const GITHUB_USER = "logithkannan";
 const GITHUB_REPO = "feel-ar-data";
+
+// Cleaned up rawUrl (No longer uses the broken ?t= parameter)
 const rawUrl = (path) =>
-  `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/${path}?t=${Date.now()}`;
+  `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/${path}`;
+
 const projectId = new URLSearchParams(window.location.search).get("project");
+
+// Optimized Fetch Function that bypasses browser caching safely
+async function fetchProjectData(path) {
+  try {
+    // 1. Try to fetch from raw.githubusercontent (Works perfectly for Public Repos)
+    const response = await fetch(rawUrl(path), {
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      }
+    });
+
+    if (!response.ok) throw new Error("Raw file fallback triggered.");
+    return await response.json();
+  } catch (error) {
+    // 2. Fallback for Private Repositories using the Token inside LocalStorage
+    console.log("Private repo detected or raw fetch failed, trying API route...");
+    const token = localStorage.getItem("feel_ar_token");
+    
+    const apiURL = `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/contents/${path}`;
+    const apiResponse = await fetch(apiURL, {
+      headers: {
+        ...(token ? { 'Authorization': `token ${token}` } : {}),
+        'Accept': 'application/vnd.github.v3.raw', // Forces GitHub to return the raw text/json payload
+        'Cache-Control': 'no-cache'
+      }
+    });
+
+    if (!apiResponse.ok) throw new Error(`Could not load project configuration. Status: ${apiResponse.status}`);
+    return await apiResponse.json();
+  }
+}
 
 let audioUnlocked     = false;
 let activeTargetCount = 0;
