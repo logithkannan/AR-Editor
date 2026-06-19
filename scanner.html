@@ -97,7 +97,6 @@
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700&display=swap');
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { width: 100%; height: 100%; overflow: hidden; background: transparent !important; font-family: 'Outfit', sans-serif; color: white; }
-
     #scan-line {
       position: fixed; top: 0; left: 0; width: 100%; height: 4px;
       background: linear-gradient(to bottom, transparent, #63caff, transparent);
@@ -105,7 +104,6 @@
       animation: scan 3s ease-in-out infinite; opacity: 0.6;
     }
     @keyframes scan { 0% { top: 15%; } 50% { top: 85%; } 100% { top: 15%; } }
-
     #viewfinder-layer { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
     .corner { position: absolute; width: 36px; height: 36px; border-color: rgba(255,255,255,0.3); border-style: solid; border-width: 0; transition: all 0.3s ease; }
     .corner-tl { top: 28px; left: 28px; border-top-width: 2px; border-left-width: 2px; }
@@ -113,10 +111,8 @@
     .corner-bl { bottom: 28px; left: 28px; border-bottom-width: 2px; border-left-width: 2px; }
     .corner-br { bottom: 28px; right: 28px; border-bottom-width: 2px; border-right-width: 2px; }
     .viewfinder-active .corner { border-color: #63caff; box-shadow: 0 0 15px rgba(99,202,255,0.5); }
-
     #scene-container { position: fixed; inset: 0; z-index: 1; }
     a-scene { width: 100% !important; height: 100% !important; }
-
     #loading-screen {
       position: fixed; inset: 0; background: #07070e;
       display: flex; flex-direction: column; align-items: center;
@@ -126,7 +122,6 @@
     .spinner { width: 48px; height: 48px; border: 3px solid rgba(99,202,255,0.15); border-top-color: #63caff; border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .load-status { font-size: 13px; color: rgba(255,255,255,0.45); font-weight: 300; }
-
     #error-screen {
       position: fixed; inset: 0; background: #07070e;
       display: none; flex-direction: column; align-items: center; justify-content: center;
@@ -136,7 +131,6 @@
     .err-title { font-size: 20px; font-weight: 700; color: #f87171; }
     .err-msg { font-size: 12px; color: rgba(255,255,255,0.45); line-height: 1.8; max-width: 300px; }
     .retry-btn { background: #63caff; color: #07070e; border: none; padding: 12px 28px; border-radius: 30px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: 'Outfit', sans-serif; }
-
     #instruction-container {
       position: fixed; bottom: 50px; width: 100%; display: flex; justify-content: center;
       pointer-events: none; z-index: 20; transition: opacity 0.3s ease;
@@ -147,7 +141,6 @@
       display: flex; align-items: center; gap: 10px;
     }
     .instruction-text { font-weight: 500; font-size: 1rem; }
-
     #target-indicator {
       position: fixed; top: 24px; left: 50%; transform: translateX(-50%);
       z-index: 20; display: none;
@@ -157,7 +150,6 @@
       gap: 8px; align-items: center;
     }
     .ti-dot { width: 7px; height: 7px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 8px #4ade80; }
-
     #unmute-btn {
       position: fixed; top: 40px; left: 50%; transform: translateX(-50%);
       z-index: 500; background: #63caff; color: #000;
@@ -165,7 +157,6 @@
       cursor: pointer; border: none; font-family: inherit; font-weight: 700;
       box-shadow: 0 0 20px rgba(99,202,255,0.6);
     }
-
     /* ── ROUND FULLSCREEN BUTTON ─────────────────────────────────────────── */
     #fullscreen-btn {
       position: fixed;
@@ -208,7 +199,6 @@
     }
     #fullscreen-btn.visible .fs-label { animation: tooltip-fade 3s ease forwards; }
     @keyframes tooltip-fade { 0%{opacity:0} 15%{opacity:1} 75%{opacity:1} 100%{opacity:0} }
-
     /* ── FULLSCREEN VIDEO PLAYER ─────────────────────────────────────────── */
     #fs-player {
       position: fixed; inset: 0; z-index: 9999; background: #000;
