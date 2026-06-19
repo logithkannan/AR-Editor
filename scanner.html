@@ -9,24 +9,18 @@
   <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
-  <!-- ── Chroma Key A-Frame Component ──────────────────────────────────────
-       Registers BEFORE the scene is created so A-Frame can pick it up.
-       Uses THREE.ShaderMaterial (the same Three.js already bundled in A-Frame)
-       to discard green pixels directly on the GPU — no canvas, no RAF needed.
-  ─────────────────────────────────────────────────────────────────────────── -->
   <script>
     AFRAME.registerComponent('chromakey-video', {
       schema: {
         src:       { type: 'selector' },
-        threshold: { type: 'number',  default: 0.25 },
-        color:     { type: 'color',   default: '#00FF00' }
+        threshold: { type: 'number',   default: 0.25 },
+        color:     { type: 'color',    default: '#00FF00' }
       },
 
       init: function () {
         const video = this.data.src;
         if (!video) return;
 
-        // THREE.VideoTexture lives inside the same Three.js A-Frame already loaded
         const texture = new THREE.VideoTexture(video);
         texture.minFilter = THREE.LinearFilter;
         texture.magFilter = THREE.LinearFilter;
@@ -60,7 +54,6 @@
           `
         });
 
-        // Wait for mesh to be ready then swap material
         const applyMaterial = () => {
           const mesh = this.el.getObject3D('mesh');
           if (mesh) {
@@ -74,7 +67,6 @@
         };
         applyMaterial();
 
-        // Play the video (muted first; unmute button handles audio)
         video.play().catch(() => {
           document.body.addEventListener('click', () => video.play(), { once: true });
         });
@@ -269,7 +261,6 @@
 
 <button id="unmute-btn">🔊 Click to Enable Sound</button>
 
-<!-- Round button: visible only when AR video is playing -->
 <button id="fullscreen-btn" aria-label="Watch full screen">
   <svg viewBox="0 0 24 24">
     <polyline points="15 3 21 3 21 9"/>
@@ -280,7 +271,6 @@
   <span class="fs-label">Full Screen</span>
 </button>
 
-<!-- Full-screen plain video player — covers everything including camera -->
 <div id="fs-player">
   <button id="fs-back-btn">
     <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
@@ -292,43 +282,32 @@
 <div id="scene-container"></div>
 
 <script>
-// ─── GitHub Scanner Configuration ─────────────────────────────────────────────
 const GITHUB_USER = "logithkannan";
 const GITHUB_REPO = "feel-ar-data";
 
-// Cleaned up rawUrl (No longer uses the broken ?t= parameter)
 const rawUrl = (path) =>
   `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/${path}`;
 
 const projectId = new URLSearchParams(window.location.search).get("project");
 
-// Optimized Fetch Function that bypasses browser caching safely
 async function fetchProjectData(path) {
   try {
-    // 1. Try to fetch from raw.githubusercontent (Works perfectly for Public Repos)
     const response = await fetch(rawUrl(path), {
-      headers: {
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache'
-      }
+      headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
     });
-
     if (!response.ok) throw new Error("Raw file fallback triggered.");
     return await response.json();
   } catch (error) {
-    // 2. Fallback for Private Repositories using the Token inside LocalStorage
     console.log("Private repo detected or raw fetch failed, trying API route...");
     const token = localStorage.getItem("feel_ar_token");
-    
     const apiURL = `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/contents/${path}`;
     const apiResponse = await fetch(apiURL, {
       headers: {
         ...(token ? { 'Authorization': `token ${token}` } : {}),
-        'Accept': 'application/vnd.github.v3.raw', // Forces GitHub to return the raw text/json payload
+        'Accept': 'application/vnd.github.v3.raw',
         'Cache-Control': 'no-cache'
       }
     });
-
     if (!apiResponse.ok) throw new Error(`Could not load project configuration. Status: ${apiResponse.status}`);
     return await apiResponse.json();
   }
@@ -338,7 +317,6 @@ let audioUnlocked     = false;
 let activeTargetCount = 0;
 let activeVideoEl     = null;
 
-/* ── Helpers ──────────────────────────────────────────────────────────────── */
 function setStatus(msg) { document.getElementById("load-status").textContent = msg; }
 function showError(msg) {
   document.getElementById("loading-screen").style.display = "none";
@@ -346,7 +324,6 @@ function showError(msg) {
   document.getElementById("error-msg").textContent = msg;
 }
 
-/* ── Unmute button ────────────────────────────────────────────────────────── */
 const unmuteBtn = document.getElementById("unmute-btn");
 unmuteBtn.addEventListener("click", () => {
   audioUnlocked = true;
@@ -354,7 +331,6 @@ unmuteBtn.addEventListener("click", () => {
   unmuteBtn.style.display = "none";
 });
 
-/* ── Fullscreen player ────────────────────────────────────────────────────── */
 const fsBtn    = document.getElementById("fullscreen-btn");
 const fsPlayer = document.getElementById("fs-player");
 const fsVideo  = document.getElementById("fs-video");
@@ -388,15 +364,12 @@ fsBack.addEventListener("click", () => {
   }
 });
 
-/* ── Init ─────────────────────────────────────────────────────────────────── */
 async function init() {
   if (!projectId) { showError("No project ID in URL. Open this link from the editor."); return; }
   setStatus("Loading project...");
   let project;
   try {
-    const res = await fetch(rawUrl(`projects/${projectId}.json`));
-    if (!res.ok) throw new Error(`Project not found (${res.status})`);
-    project = await res.json();
+    project = await fetchProjectData(`projects/${projectId}.json`);
   } catch (e) { showError(e.message); return; }
 
   if (!project.mindFileUrl) { showError("No AR target compiled yet. Save the project in the editor first."); return; }
@@ -412,7 +385,6 @@ async function init() {
   }
 }
 
-/* ── Single target ────────────────────────────────────────────────────────── */
 function buildSingleScene(project) {
   const { assetsHTML, entitiesHTML } = buildTargetHTML(project.layers, 0);
 
@@ -458,7 +430,6 @@ function buildSingleScene(project) {
   });
 }
 
-/* ── Multi target ─────────────────────────────────────────────────────────── */
 function buildMultiScene(project) {
   let allAssetsHTML = "", allEntitiesHTML = "";
 
@@ -523,7 +494,6 @@ function buildMultiScene(project) {
   });
 }
 
-/* ── Build HTML for one target's layers ──────────────────────────────────── */
 const W = 500, H = 360;
 
 function buildTargetHTML(layers, targetIdx) {
@@ -539,25 +509,29 @@ function buildTargetHTML(layers, targetIdx) {
     const opac   = (layer.opacity ?? 1).toFixed(2);
 
     if (layer.type === "video") {
-      // Hidden <video> element — always muted to satisfy autoplay policy
       assetsHTML += `<video id="${id}-src" src="${layer.url}" loop muted playsinline webkit-playsinline crossorigin="anonymous" preload="auto"></video>`;
 
-      if (layer.isGreenScreen) {
-        // ── GREEN SCREEN path ──────────────────────────────────────────────
-        // Use <a-plane> + chromakey-video component (THREE.ShaderMaterial).
-        // The component receives the <video> element via selector and applies
-        // a GPU fragment shader that discards pixels close to green (#00FF00).
-        const threshold = (layer.chromaThreshold || 0.25).toFixed(3);
+      // Matches changes with live editor properties ('layer.chromaKey' or 'layer.isGreenScreen')
+      if (layer.isGreenScreen || layer.chromaKey) {
+        const targetColor = layer.chromaColor || '#00FF00';
+        
+        // Convert range metrics from editor fields safely (maps 0-100 down to WebGL normalized 0.0 - 1.0)
+        let thresholdVal = 0.25;
+        if (layer.chromaTolerance !== undefined) {
+          thresholdVal = layer.chromaTolerance / 100;
+        } else if (layer.chromaThreshold !== undefined) {
+          thresholdVal = layer.chromaThreshold;
+        }
+
         entitiesHTML += `<a-plane id="${id}"
           width="${scaleW}" height="${scaleH}"
           position="${posX} ${posY} 0.001"
           rotation="0 0 ${rotZ}"
           material="transparent: true; opacity: ${opac}"
-          chromakey-video="src: #${id}-src; threshold: ${threshold}; color: #00FF00"
+          chromakey-video="src: #${id}-src; threshold: ${thresholdVal.toFixed(3)}; color: ${targetColor}"
           visible="false">
         </a-plane>`;
       } else {
-        // ── NORMAL video path ──────────────────────────────────────────────
         entitiesHTML += `<a-video id="${id}"
           src="#${id}-src"
           width="${scaleW}" height="${scaleH}"
@@ -596,7 +570,6 @@ function buildTargetHTML(layers, targetIdx) {
   return { assetsHTML, entitiesHTML };
 }
 
-/* ── Layer visibility ─────────────────────────────────────────────────────── */
 function showLayers(layers, idx) {
   (layers || []).forEach((_, i) => {
     const el = document.getElementById(`t${idx}-layer-${i}`);
@@ -610,7 +583,6 @@ function hideLayers(layers, idx) {
   });
 }
 
-/* ── Video play / pause ───────────────────────────────────────────────────── */
 function playVideos(layers, idx) {
   (layers || []).forEach((layer, i) => {
     if (layer.type !== "video") return;
@@ -630,7 +602,6 @@ function pauseVideos(layers, idx) {
   });
 }
 
-/* Returns the first <video> source element (for fullscreen button) */
 function getFirstVideoEl(layers, idx) {
   for (let i = 0; i < (layers || []).length; i++) {
     if (layers[i].type === "video") {
@@ -641,7 +612,6 @@ function getFirstVideoEl(layers, idx) {
   return null;
 }
 
-/* ── iOS DeviceOrientation permission ────────────────────────────────────── */
 if (typeof DeviceOrientationEvent?.requestPermission === "function") {
   const req = () => {
     DeviceOrientationEvent.requestPermission()
