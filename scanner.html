@@ -266,27 +266,49 @@ const rawUrl = (path) =>
 
 const projectId = new URLSearchParams(window.location.search).get("project");
 
-// Optimized Fetch Function that safely runs custom routing for public vs private tokens
+// FIXED: Cleaned up and optimized fetching method to robustly handle both Public/Private repos without CORS blocks
 async function fetchProjectData(path) {
   try {
+    // 1. Attempt standard Raw fetch (Fastest for public repositories)
     const response = await fetch(rawUrl(path), {
       headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
     });
-    if (!response.ok) throw new Error("Raw file fallback triggered.");
+    if (!response.ok) throw new Error("Raw file not available directly, switching to API route...");
     return await response.json();
   } catch (error) {
-    console.log("Private repo detected or raw fetch failed, trying API route...");
+    console.log(error.message);
     const token = localStorage.getItem("feel_ar_token");
     const apiURL = `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/contents/${path}`;
+    
+    // 2. Fetch file content properties from GitHub API to read the proper CORS-friendly download link
     const apiResponse = await fetch(apiURL, {
       headers: {
         ...(token ? { 'Authorization': `token ${token}` } : {}),
-        'Accept': 'application/vnd.github.v3.raw',
         'Cache-Control': 'no-cache'
       }
     });
-    if (!apiResponse.ok) throw new Error(`Could not load project configuration. Status: ${apiResponse.status}`);
-    return await apiResponse.json();
+
+    if (!apiResponse.ok) {
+      throw new Error(`GitHub API returned error status: ${apiResponse.status}. Double check your token permissions.`);
+    }
+
+    const fileMeta = await apiResponse.json();
+    
+    // 3. Use standard Base64 decoding if the file is returned as a data blob, or fetch download_url directly
+    if (fileMeta.download_url) {
+      // Use the authorized dynamic download URL to cleanly read the JSON payload
+      const finalRes = await fetch(fileMeta.download_url, {
+        headers: token ? { 'Authorization': `token ${token}` } : {}
+      });
+      return await finalRes.json();
+    } else if (fileMeta.content) {
+      // fallback decoding mechanism
+      const cleanBase64 = fileMeta.content.replace(/\s/g, '');
+      const jsonText = atob(cleanBase64);
+      return JSON.parse(jsonText);
+    }
+    
+    throw new Error("Could not extract file properties from repo path configuration.");
   }
 }
 
@@ -342,25 +364,24 @@ fsBack.addEventListener("click", () => {
 });
 
 async function init() {
-  if (!projectId) { showError("No project ID in URL. Open this link from the editor."); return; }
-  setStatus("Loading project...");
+  if (!projectId) { showError("No project ID found in URL parameters. Please open this link using the preview links inside your project editor."); return; }
+  setStatus("Loading project configurations...");
   let project;
   try {
-    // FIXED: Now correctly calling the advanced fetch routing setup to handle tokens properly!
     project = await fetchProjectData(`projects/${projectId}.json`);
   } catch (e) { 
-    showError(e.message + " (Check if project JSON exists on GitHub)"); 
+    showError(e.message + " — Verify that the project ID is accurate and that your GitHub repo contains 'projects/" + projectId + ".json'."); 
     return; 
   }
 
-  if (!project.mindFileUrl) { showError("No AR target compiled yet. Save the project in the editor first."); return; }
+  if (!project.mindFileUrl) { showError("No compiled AR target asset file map found. Generate and save target files in the editor before loading the scanner app."); return; }
 
   if (project.type === "multi") {
-    if (!project.targets?.length) { showError("No targets found in this project."); return; }
+    if (!project.targets?.length) { showError("No image targets defined for this multi-layer canvas configuration."); return; }
     setStatus(`Building multi-target scene (${project.targets.length} targets)...`);
     buildMultiScene(project);
   } else {
-    if (!project.layers?.length) { showError("No layers added yet."); return; }
+    if (!project.layers?.length) { showError("No creative media layers applied to this target project profile."); return; }
     setStatus("Building AR scene...");
     buildSingleScene(project);
   }
@@ -562,7 +583,6 @@ function hideLayers(layers, idx) {
   });
 }
 
-// Play videos logic
 function playVideos(layers, idx) {
   (layers || []).forEach((layer, i) => {
     if (layer.type !== "video") return;
