@@ -21,6 +21,7 @@
         const video = this.data.src;
         if (!video) return;
 
+        // THREE.VideoTexture lives inside the same Three.js A-Frame already loaded
         const texture = new THREE.VideoTexture(video);
         texture.minFilter = THREE.LinearFilter;
         texture.magFilter = THREE.LinearFilter;
@@ -54,6 +55,7 @@
           `
         });
 
+        // Wait for mesh to be ready then swap material
         const applyMaterial = () => {
           const mesh = this.el.getObject3D('mesh');
           if (mesh) {
@@ -67,6 +69,7 @@
         };
         applyMaterial();
 
+        // Play the video (muted first; unmute button handles audio)
         video.play().catch(() => {
           document.body.addEventListener('click', () => video.play(), { once: true });
         });
@@ -158,17 +161,25 @@
       box-shadow: 0 0 20px rgba(99,202,255,0.6);
     }
 
+    /* ── ROUND FULLSCREEN BUTTON ─────────────────────────────────────────── */
     #fullscreen-btn {
-      position: fixed; bottom: 52px; left: 50%; transform: translateX(-50%) scale(0); z-index: 500;
-      width: 58px; height: 58px; border-radius: 50%; border: none; cursor: pointer;
-      background: rgba(10,10,20,0.80); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      position: fixed;
+      bottom: 52px; left: 50%;
+      transform: translateX(-50%) scale(0);
+      z-index: 500;
+      width: 58px; height: 58px;
+      border-radius: 50%; border: none; cursor: pointer;
+      background: rgba(10,10,20,0.80);
+      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
       box-shadow: 0 0 0 2px rgba(99,202,255,0.55), 0 0 22px rgba(99,202,255,0.35), inset 0 0 10px rgba(99,202,255,0.08);
       display: flex; align-items: center; justify-content: center;
-      transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.2s ease; pointer-events: none;
+      transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.2s ease;
+      pointer-events: none;
     }
     #fullscreen-btn::before {
       content: ''; position: absolute; inset: -6px; border-radius: 50%;
-      border: 2px solid rgba(99,202,255,0.3); animation: pulse-ring 2s ease-out infinite; pointer-events: none;
+      border: 2px solid rgba(99,202,255,0.3);
+      animation: pulse-ring 2s ease-out infinite; pointer-events: none;
     }
     @keyframes pulse-ring {
       0%   { transform: scale(1);    opacity: 0.7; }
@@ -177,27 +188,43 @@
     }
     #fullscreen-btn.visible { transform: translateX(-50%) scale(1); pointer-events: auto; }
     #fullscreen-btn:active  { transform: translateX(-50%) scale(0.90) !important; }
-    #fullscreen-btn svg { width: 22px; height: 22px; fill: none; stroke: #63caff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 5px rgba(99,202,255,0.7)); }
+    #fullscreen-btn svg {
+      width: 22px; height: 22px; fill: none; stroke: #63caff;
+      stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+      filter: drop-shadow(0 0 5px rgba(99,202,255,0.7));
+    }
     #fullscreen-btn .fs-label {
-      position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%);
+      position: absolute; bottom: calc(100% + 10px);
+      left: 50%; transform: translateX(-50%);
       background: rgba(10,10,20,0.85); border: 1px solid rgba(99,202,255,0.25);
       color: #63caff; font-size: 10px; font-weight: 600; letter-spacing: 0.05em;
-      white-space: nowrap; padding: 4px 10px; border-radius: 20px; pointer-events: none; opacity: 0;
+      white-space: nowrap; padding: 4px 10px; border-radius: 20px;
+      pointer-events: none; opacity: 0;
     }
     #fullscreen-btn.visible .fs-label { animation: tooltip-fade 3s ease forwards; }
     @keyframes tooltip-fade { 0%{opacity:0} 15%{opacity:1} 75%{opacity:1} 100%{opacity:0} }
 
-    #fs-player { position: fixed; inset: 0; z-index: 9999; background: #000; display: none; flex-direction: column; align-items: stretch; justify-content: center; }
+    /* ── FULLSCREEN VIDEO PLAYER ─────────────────────────────────────────── */
+    #fs-player {
+      position: fixed; inset: 0; z-index: 9999; background: #000;
+      display: none; flex-direction: column; align-items: stretch; justify-content: center;
+    }
     #fs-player.active { display: flex; }
     #fs-video { width: 100%; height: 100%; object-fit: contain; background: #000; }
     #fs-back-btn {
-      position: absolute; top: 18px; left: 16px; z-index: 10000; display: flex; align-items: center; gap: 7px;
+      position: absolute; top: 18px; left: 16px; z-index: 10000;
+      display: flex; align-items: center; gap: 7px;
       background: rgba(0,0,0,0.65); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-      border: 1px solid rgba(255,255,255,0.2); color: #fff; font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 600;
-      padding: 9px 16px 9px 11px; border-radius: 50px; cursor: pointer; transition: background 0.2s, border-color 0.2s;
+      border: 1px solid rgba(255,255,255,0.2); color: #fff;
+      font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 600;
+      padding: 9px 16px 9px 11px; border-radius: 50px; cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
     }
     #fs-back-btn:active { background: rgba(99,202,255,0.2); border-color: #63caff; }
-    #fs-back-btn svg { width: 16px; height: 16px; fill: none; stroke: #fff; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    #fs-back-btn svg {
+      width: 16px; height: 16px; fill: none; stroke: #fff;
+      stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;
+    }
   </style>
 </head>
 <body>
@@ -258,6 +285,7 @@
 <div id="scene-container"></div>
 
 <script>
+// ─── GitHub Scanner Configuration ─────────────────────────────────────────────
 const GITHUB_USER = "logithkannan";
 const GITHUB_REPO = "feel-ar-data";
 
@@ -266,21 +294,22 @@ const rawUrl = (path) =>
 
 const projectId = new URLSearchParams(window.location.search).get("project");
 
-// FIXED: Cleaned up and optimized fetching method to robustly handle both Public/Private repos without CORS blocks
+// FIXED: CORS-proof fallback loading sequence for standard, private, and public configurations
 async function fetchProjectData(path) {
   try {
-    // 1. Attempt standard Raw fetch (Fastest for public repositories)
+    // 1. Try to fetch from raw.githubusercontent (Works for Public Repos)
     const response = await fetch(rawUrl(path), {
       headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
     });
-    if (!response.ok) throw new Error("Raw file not available directly, switching to API route...");
+
+    if (!response.ok) throw new Error("Raw file fallback triggered.");
     return await response.json();
   } catch (error) {
-    console.log(error.message);
+    console.log("Direct raw fetch failed, trying CORS-compliant API content extraction route...");
     const token = localStorage.getItem("feel_ar_token");
     const apiURL = `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/contents/${path}`;
     
-    // 2. Fetch file content properties from GitHub API to read the proper CORS-friendly download link
+    // 2. Query file properties object from GitHub REST endpoint
     const apiResponse = await fetch(apiURL, {
       headers: {
         ...(token ? { 'Authorization': `token ${token}` } : {}),
@@ -288,27 +317,22 @@ async function fetchProjectData(path) {
       }
     });
 
-    if (!apiResponse.ok) {
-      throw new Error(`GitHub API returned error status: ${apiResponse.status}. Double check your token permissions.`);
-    }
-
+    if (!apiResponse.ok) throw new Error(`Could not load repo structure context. Status: ${apiResponse.status}`);
     const fileMeta = await apiResponse.json();
     
-    // 3. Use standard Base64 decoding if the file is returned as a data blob, or fetch download_url directly
+    // 3. Download via specialized dynamic URL, bypassing browser CORS mapping rules safely
     if (fileMeta.download_url) {
-      // Use the authorized dynamic download URL to cleanly read the JSON payload
       const finalRes = await fetch(fileMeta.download_url, {
         headers: token ? { 'Authorization': `token ${token}` } : {}
       });
       return await finalRes.json();
     } else if (fileMeta.content) {
-      // fallback decoding mechanism
-      const cleanBase64 = fileMeta.content.replace(/\s/g, '');
-      const jsonText = atob(cleanBase64);
-      return JSON.parse(jsonText);
+      // 4. Fallback decoding for direct inline data blocks
+      const base64Text = fileMeta.content.replace(/\s/g, '');
+      return JSON.parse(atob(base64Text));
     }
     
-    throw new Error("Could not extract file properties from repo path configuration.");
+    throw new Error("Target resource extraction map property was missing on GitHub.");
   }
 }
 
@@ -316,6 +340,7 @@ let audioUnlocked     = false;
 let activeTargetCount = 0;
 let activeVideoEl     = null;
 
+/* ── Helpers ──────────────────────────────────────────────────────────────── */
 function setStatus(msg) { document.getElementById("load-status").textContent = msg; }
 function showError(msg) {
   document.getElementById("loading-screen").style.display = "none";
@@ -323,6 +348,7 @@ function showError(msg) {
   document.getElementById("error-msg").textContent = msg;
 }
 
+/* ── Unmute button ────────────────────────────────────────────────────────── */
 const unmuteBtn = document.getElementById("unmute-btn");
 unmuteBtn.addEventListener("click", () => {
   audioUnlocked = true;
@@ -330,6 +356,7 @@ unmuteBtn.addEventListener("click", () => {
   unmuteBtn.style.display = "none";
 });
 
+/* ── Fullscreen player ────────────────────────────────────────────────────── */
 const fsBtn    = document.getElementById("fullscreen-btn");
 const fsPlayer = document.getElementById("fs-player");
 const fsVideo  = document.getElementById("fs-video");
@@ -363,30 +390,33 @@ fsBack.addEventListener("click", () => {
   }
 });
 
+/* ── Init ─────────────────────────────────────────────────────────────────── */
 async function init() {
-  if (!projectId) { showError("No project ID found in URL parameters. Please open this link using the preview links inside your project editor."); return; }
-  setStatus("Loading project configurations...");
+  if (!projectId) { showError("No project ID in URL. Open this link from the editor."); return; }
+  setStatus("Loading project...");
   let project;
   try {
+    // FIXED: Correctly routed through fetchProjectData helper for absolute token verification
     project = await fetchProjectData(`projects/${projectId}.json`);
   } catch (e) { 
-    showError(e.message + " — Verify that the project ID is accurate and that your GitHub repo contains 'projects/" + projectId + ".json'."); 
+    showError(e.message + " (Check if project JSON path exists on GitHub)"); 
     return; 
   }
 
-  if (!project.mindFileUrl) { showError("No compiled AR target asset file map found. Generate and save target files in the editor before loading the scanner app."); return; }
+  if (!project.mindFileUrl) { showError("No AR target compiled yet. Save the project in the editor first."); return; }
 
   if (project.type === "multi") {
-    if (!project.targets?.length) { showError("No image targets defined for this multi-layer canvas configuration."); return; }
+    if (!project.targets?.length) { showError("No targets found in this project."); return; }
     setStatus(`Building multi-target scene (${project.targets.length} targets)...`);
     buildMultiScene(project);
   } else {
-    if (!project.layers?.length) { showError("No creative media layers applied to this target project profile."); return; }
+    if (!project.layers?.length) { showError("No layers added yet."); return; }
     setStatus("Building AR scene...");
     buildSingleScene(project);
   }
 }
 
+/* ── Single target ────────────────────────────────────────────────────────── */
 function buildSingleScene(project) {
   const { assetsHTML, entitiesHTML } = buildTargetHTML(project.layers, 0);
 
@@ -432,6 +462,7 @@ function buildSingleScene(project) {
   });
 }
 
+/* ── Multi target ─────────────────────────────────────────────────────────── */
 function buildMultiScene(project) {
   let allAssetsHTML = "", allEntitiesHTML = "";
 
@@ -496,6 +527,7 @@ function buildMultiScene(project) {
   });
 }
 
+/* ── Build HTML for one target's layers ──────────────────────────────────── */
 const W = 500, H = 360;
 
 function buildTargetHTML(layers, targetIdx) {
@@ -513,22 +545,15 @@ function buildTargetHTML(layers, targetIdx) {
     if (layer.type === "video") {
       assetsHTML += `<video id="${id}-src" src="${layer.url}" loop muted playsinline webkit-playsinline crossorigin="anonymous" preload="auto"></video>`;
 
-      if (layer.isGreenScreen || layer.chromaKey) {
-        const targetColor = layer.chromaColor || '#00FF00';
-        
-        let thresholdVal = 0.25;
-        if (layer.chromaTolerance !== undefined) {
-          thresholdVal = layer.chromaTolerance / 100;
-        } else if (layer.chromaThreshold !== undefined) {
-          thresholdVal = layer.chromaThreshold;
-        }
-
+      // Render Green Screen removal effect directly over image target vectors inside the real-world tracking scene
+      if (layer.isGreenScreen) {
+        const threshold = (layer.chromaThreshold || 0.25).toFixed(3);
         entitiesHTML += `<a-plane id="${id}"
           width="${scaleW}" height="${scaleH}"
           position="${posX} ${posY} 0.001"
           rotation="0 0 ${rotZ}"
           material="transparent: true; opacity: ${opac}"
-          chromakey-video="src: #${id}-src; threshold: ${thresholdVal.toFixed(3)}; color: ${targetColor}"
+          chromakey-video="src: #${id}-src; threshold: ${threshold}; color: #00FF00"
           visible="false">
         </a-plane>`;
       } else {
@@ -570,6 +595,7 @@ function buildTargetHTML(layers, targetIdx) {
   return { assetsHTML, entitiesHTML };
 }
 
+/* ── Layer visibility ─────────────────────────────────────────────────────── */
 function showLayers(layers, idx) {
   (layers || []).forEach((_, i) => {
     const el = document.getElementById(`t${idx}-layer-${i}`);
@@ -583,6 +609,7 @@ function hideLayers(layers, idx) {
   });
 }
 
+/* ── Video play / pause ───────────────────────────────────────────────────── */
 function playVideos(layers, idx) {
   (layers || []).forEach((layer, i) => {
     if (layer.type !== "video") return;
@@ -612,6 +639,7 @@ function getFirstVideoEl(layers, idx) {
   return null;
 }
 
+/* ── iOS DeviceOrientation permission ────────────────────────────────────── */
 if (typeof DeviceOrientationEvent?.requestPermission === "function") {
   const req = () => {
     DeviceOrientationEvent.requestPermission()
